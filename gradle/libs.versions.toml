@@ -8,11 +8,53 @@ androidx-lifecycle = "2.9.6"
 composeMultiplatform = "1.9.3"
 kotlin = "2.3.0"
 
+# Coroutines
+kotlinx-coroutines = "1.10.2"
+
+# Extended Icon
+extendedIcon = "1.7.3"
+
+# Koin Di
+koin = "4.1.1"
+
+# Navigation
+navigation = "2.9.1"
+
+# Datastore
+datastore = "1.2.0"
+
+# LLM Inference (mediapipe task gen)
+tasksGenAi = "0.10.29"
+
 [libraries]
 kotlin-test = { module = "org.jetbrains.kotlin:kotlin-test", version.ref = "kotlin" }
 androidx-activity-compose = { module = "androidx.activity:activity-compose", version.ref = "androidx-activity" }
 androidx-lifecycle-viewmodelCompose = { module = "org.jetbrains.androidx.lifecycle:lifecycle-viewmodel-compose", version.ref = "androidx-lifecycle" }
 androidx-lifecycle-runtimeCompose = { module = "org.jetbrains.androidx.lifecycle:lifecycle-runtime-compose", version.ref = "androidx-lifecycle" }
+
+# Coroutines
+kotlinx-coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "kotlinx-coroutines" }
+kotlinx-coroutines-android = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-android", version.ref = "kotlinx-coroutines" }
+
+# Icon Extended
+icons-extended = { module = "org.jetbrains.compose.material:material-icons-extended", version.ref = "extendedIcon" }
+
+# Navigation
+navigation-compose = { module = "org.jetbrains.androidx.navigation:navigation-compose", version.ref = "navigation" }
+
+# Koin
+koin-core = { module = "io.insert-koin:koin-core", version.ref = "koin" }
+koin-compose = { module = "io.insert-koin:koin-compose", version.ref = "koin" }
+koin-compose-viewmodel = { module = "io.insert-koin:koin-compose-viewmodel", version.ref = "koin" }
+
+# DataStore library
+androidx-datastore = { module = "androidx.datastore:datastore", version.ref = "datastore" }
+
+# The Preferences DataStore library
+androidx-datastore-preferences = { module = "androidx.datastore:datastore-preferences", version.ref = "datastore" }
+
+# LLM Inference (mediapipe task gen)
+mediapipe-tasks-genai = { module = "com.google.mediapipe:tasks-genai", version.ref = "tasksGenAi" }
 
 [plugins]
 androidApplication = { id = "com.android.application", version.ref = "agp" }
