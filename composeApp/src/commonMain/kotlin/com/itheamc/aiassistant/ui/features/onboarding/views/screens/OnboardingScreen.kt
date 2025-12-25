@@ -7,22 +7,20 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -32,7 +30,7 @@ import com.itheamc.aiassistant.ui.common.AiAssistantAppLogo
 import com.itheamc.aiassistant.ui.local_providers.LocalNavController
 import com.itheamc.aiassistant.ui.navigation.AiAssistantRoute
 
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalSharedTransitionApi::class)
+@OptIn(ExperimentalSharedTransitionApi::class)
 @Composable
 fun OnboardingScreen(
     modifier: Modifier = Modifier,
@@ -45,28 +43,18 @@ fun OnboardingScreen(
     Scaffold(
         modifier = modifier.fillMaxSize(),
         containerColor = MaterialTheme.colorScheme.surface,
-        topBar = {
-            TopAppBar(
-                title = {
-                    Text("Ai Assistant")
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = Color.Transparent,
-                ),
-            )
-        }
     ) { innerPadding ->
         Column(
             modifier = Modifier
                 .padding(innerPadding)
                 .fillMaxSize()
-                .padding(20.dp),
-            verticalArrangement = Arrangement.Center,
+                .padding(24.dp),
+            verticalArrangement = Arrangement.SpaceBetween,
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Column(
                 modifier = Modifier
-                    .weight(1f, true)
+                    .weight(1f)
                     .fillMaxWidth(),
                 verticalArrangement = Arrangement.Center,
                 horizontalAlignment = Alignment.CenterHorizontally
@@ -74,50 +62,62 @@ fun OnboardingScreen(
 
                 Box(
                     modifier = Modifier
-                        .padding(bottom = 16.dp)
-                        .size(80.dp)
+                        .padding(bottom = 32.dp)
+                        .size(120.dp)
                         .clip(CircleShape)
-                        .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)),
+                        .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f)),
                     contentAlignment = Alignment.Center
                 ) {
                     AiAssistantAppLogo(
-                        modifier = Modifier
-                            .size(42.dp),
+                        modifier = Modifier.size(64.dp),
                         sharedTransitionScope = sharedTransitionScope,
                         animatedContentScope = animatedContentScope,
                     )
                 }
+                
                 Text(
-                    modifier = Modifier.padding(vertical = 12.dp),
-                    text = "Grow your business, locally",
+                    text = "Welcome to AI Assistant",
                     textAlign = TextAlign.Center,
-                    style = MaterialTheme.typography.headlineLarge,
-                    fontWeight = FontWeight.Bold,
+                    style = MaterialTheme.typography.headlineMedium,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = MaterialTheme.colorScheme.onSurface
                 )
+                
+                Spacer(modifier = Modifier.height(16.dp))
+                
                 Text(
-                    modifier = Modifier,
-                    text = "Accept orders, manage inventory, and connect with nearby customers",
+                    text = "Experience the power of Generative AI directly on your device. Fast, secure, and completely private.",
                     textAlign = TextAlign.Center,
                     style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(
-                        alpha = 0.75f
-                    ),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    lineHeight = MaterialTheme.typography.bodyLarge.lineHeight * 1.2
                 )
             }
 
-            AiAssistantAppButton(
-                modifier = Modifier
-                    .padding(top = 75.dp)
-                    .fillMaxWidth(),
-                text = "Let's Talk",
-                onClick = {
-                    // Navigate To Ai Chat Screen
-                    AiAssistantRoute.AiChat.navigate(
-                        navController,
-                        popUpTo = AiAssistantRoute.Onboarding.name,
-                    )
-                },
-            )
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Text(
+                    text = "No internet connection required for chat.",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.primary,
+                    fontWeight = FontWeight.SemiBold
+                )
+                
+                Spacer(modifier = Modifier.height(24.dp))
+
+                AiAssistantAppButton(
+                    modifier = Modifier.fillMaxWidth(),
+                    text = "Get Started",
+                    onClick = {
+                        AiAssistantRoute.AiChat.navigate(
+                            navController,
+                            popUpTo = AiAssistantRoute.Onboarding.name,
+                        )
+                    },
+                )
+            }
         }
     }
 }

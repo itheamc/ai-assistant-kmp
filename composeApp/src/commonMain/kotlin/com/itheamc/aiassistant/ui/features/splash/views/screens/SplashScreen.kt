@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -35,7 +36,7 @@ fun SplashScreen(
 
     // Start animation on composition
     LaunchedEffect(Unit) {
-        delay((1000..2500).random().toLong())
+        delay((1500..2000).random().toLong())
 
         AiAssistantRoute.Onboarding.navigate(
             navController,
@@ -56,12 +57,19 @@ fun SplashScreen(
             sharedTransitionScope = sharedTransitionScope,
             animatedContentScope = animatedContentScope,
         )
-        Spacer(modifier = Modifier.height(16.dp))
+        Spacer(modifier = Modifier.height(24.dp))
         Text(
-            "Ai Assistant",
+            text = "AI Assistant",
             color = MaterialTheme.colorScheme.onSurface,
             style = MaterialTheme.typography.headlineLarge,
-            fontWeight = FontWeight.Bold
+            fontWeight = FontWeight.ExtraBold
+        )
+        Text(
+            modifier = Modifier.padding(top = 8.dp),
+            text = "Your Private AI Companion",
+            color = MaterialTheme.colorScheme.primary,
+            style = MaterialTheme.typography.labelLarge,
+            fontWeight = FontWeight.Medium
         )
     }
 }
