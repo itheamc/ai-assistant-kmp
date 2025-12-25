@@ -5,6 +5,9 @@ plugins {
     alias(libs.plugins.androidApplication)
     alias(libs.plugins.composeMultiplatform)
     alias(libs.plugins.composeCompiler)
+
+    // Cocoapods
+    alias(libs.plugins.kotlinCocoapods)
 }
 
 kotlin {
@@ -14,13 +17,31 @@ kotlin {
         }
     }
     
-    listOf(
-        iosArm64(),
-        iosSimulatorArm64()
-    ).forEach { iosTarget ->
-        iosTarget.binaries.framework {
+    iosX64()
+    iosArm64()
+    iosSimulatorArm64()
+
+    cocoapods {
+        version = "1.0"
+        summary = "Shared module for MediaPipe LLM"
+        homepage = "https://github.com/google/mediapipe"
+        ios.deploymentTarget = "15.0"
+
+        name = "AiAssistantCocoapod"
+
+        framework {
             baseName = "ComposeApp"
             isStatic = true
+        }
+
+        pod("MediaPipeTasksGenAIC") {
+            version = "~> 0.10.21"
+            extraOpts += listOf("-compiler-option", "-fmodules")
+        }
+
+        pod("MediaPipeTasksGenAI") {
+            version = "0.10.21"
+            extraOpts += listOf("-compiler-option", "-fmodules")
         }
     }
     
@@ -101,4 +122,3 @@ android {
 dependencies {
     debugImplementation(compose.uiTooling)
 }
-
