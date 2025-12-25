@@ -84,6 +84,9 @@ kotlin {
 
             // For Coroutines
             implementation(libs.kotlinx.coroutines.core)
+
+            // DateTime
+            implementation(libs.kotlinx.datetime)
         }
 
         commonTest.dependencies {

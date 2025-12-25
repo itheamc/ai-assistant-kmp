@@ -26,6 +26,9 @@ datastore = "1.2.0"
 # LLM Inference (mediapipe task gen)
 tasksGenAi = "0.10.29"
 
+# Kotlin Datatime
+dateTime = "0.7.1"
+
 [libraries]
 kotlin-test = { module = "org.jetbrains.kotlin:kotlin-test", version.ref = "kotlin" }
 androidx-activity-compose = { module = "androidx.activity:activity-compose", version.ref = "androidx-activity" }
@@ -55,6 +58,9 @@ androidx-datastore-preferences = { module = "androidx.datastore:datastore-prefer
 
 # LLM Inference (mediapipe task gen)
 mediapipe-tasks-genai = { module = "com.google.mediapipe:tasks-genai", version.ref = "tasksGenAi" }
+
+# Kotlin Datetime
+kotlinx-datetime = { module = "org.jetbrains.kotlinx:kotlinx-datetime", version.ref = "dateTime" }
 
 [plugins]
 androidApplication = { id = "com.android.application", version.ref = "agp" }
