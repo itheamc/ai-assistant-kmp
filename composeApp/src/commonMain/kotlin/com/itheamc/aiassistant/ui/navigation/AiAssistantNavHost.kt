@@ -11,6 +11,7 @@ import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import com.itheamc.aiassistant.ui.features.onboarding.views.screens.OnboardingScreen
 import com.itheamc.aiassistant.ui.features.splash.views.screens.SplashScreen
 
 @OptIn(ExperimentalSharedTransitionApi::class)
@@ -50,7 +51,10 @@ fun AiAssistantNavHost(
                 popEnterTransition = { fadeIn(tween(250)) },
                 popExitTransition = { fadeOut(tween(200)) }
             ) {
-
+                OnboardingScreen(
+                    sharedTransitionScope = this@SharedTransitionLayout,
+                    animatedContentScope = this@composable
+                )
             }
 
             composable(
