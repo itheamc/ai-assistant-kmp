@@ -1,9 +1,10 @@
-package com.itheamc.aiassistant.ui.common
+package com.itheamc.aiassistant.ui.features.ai.views.composables
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -38,7 +39,8 @@ fun ChatInputBar(
 
     Surface(
         modifier = modifier
-            .fillMaxWidth(),
+            .fillMaxWidth()
+            .heightIn(max = 150.dp),
         color = MaterialTheme.colorScheme.surface,
         shadowElevation = 4.dp,
         tonalElevation = 2.dp

@@ -20,8 +20,7 @@ actual class PlatformFileDownloader(private val context: Context) {
         fileName: String
     ): Flow<FileDownloadState> = callbackFlow {
         val request = DownloadManager.Request(url.toUri()).apply {
-            setTitle("Downloading File")
-            setDescription(fileName)
+            setTitle("Downloading $fileName")
             setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE)
             setDestinationInExternalFilesDir(context, Environment.DIRECTORY_DOWNLOADS, fileName)
         }

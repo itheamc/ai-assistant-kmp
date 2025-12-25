@@ -13,6 +13,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.unit.dp
 
 /**
@@ -28,6 +29,7 @@ fun AiAssistantAppButton(
     trailing: @Composable (() -> Unit)? = null,
     onClick: (() -> Unit)? = null,
     buttonType: AiAssistantAppButtonType = AiAssistantAppButtonType.Normal,
+    shape: Shape = MaterialTheme.shapes.extraLarge,
     enabled: Boolean = true,
     secondary: Boolean = false,
     loading: Boolean = false
@@ -39,7 +41,7 @@ fun AiAssistantAppButton(
                 enabled = !loading && enabled,
                 modifier = modifier
                     .height(48.dp),
-                shape = MaterialTheme.shapes.medium,
+                shape = shape,
                 colors = if (secondary) ButtonDefaults.buttonColors(
                     containerColor = MaterialTheme.colorScheme.surfaceVariant,
                     contentColor = MaterialTheme.colorScheme.onSurfaceVariant
@@ -70,7 +72,7 @@ fun AiAssistantAppButton(
                 enabled = !loading && enabled,
                 modifier = modifier
                     .height(48.dp),
-                shape = MaterialTheme.shapes.medium,
+                shape = shape,
                 colors = if (secondary) ButtonDefaults.outlinedButtonColors(
                     contentColor = ButtonDefaults.outlinedButtonColors().contentColor.copy(
                         alpha = 0.85f
@@ -105,7 +107,7 @@ fun AiAssistantAppButton(
                 enabled = !loading && enabled,
                 modifier = modifier
                     .height(48.dp),
-                shape = MaterialTheme.shapes.medium,
+                shape = shape,
                 colors = if (secondary) ButtonDefaults.textButtonColors(
                     contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
                 ) else ButtonDefaults.textButtonColors()

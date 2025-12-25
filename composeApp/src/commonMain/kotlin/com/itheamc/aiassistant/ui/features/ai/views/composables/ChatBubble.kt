@@ -1,4 +1,4 @@
-package com.itheamc.aiassistant.ui.common
+package com.itheamc.aiassistant.ui.features.ai.views.composables
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -23,14 +23,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.itheamc.aiassistant.core.utils.timeAgo
+import com.itheamc.aiassistant.ui.features.ai.models.ChatMessage
 
-data class ChatMessage(
-    val id: String,
-    val text: String,
-    val timestamp: String,
-    val sender: String? = null,
-    val self: Boolean = true,
-)
 
 @Composable
 fun ChatBubble(
@@ -43,13 +37,14 @@ fun ChatBubble(
             message = message.text,
             timestamp = message.timestamp,
             modifier = modifier,
+            sender = message.sender,
             isContinuationBySameUser = isContinuationBySameUser,
         )
     } else {
         UserChatBubble(
             message = message.text,
             timestamp = message.timestamp,
-            sender = message.sender ?: "Sender",
+            sender = message.sender,
             modifier = modifier,
             isContinuationBySameUser = isContinuationBySameUser
         )
@@ -64,7 +59,7 @@ private fun UserChatBubble(
     modifier: Modifier = Modifier,
     message: String,
     timestamp: String,
-    sender: String? = null,
+    sender: String,
     isContinuationBySameUser: Boolean = false,
 ) {
     Column(
@@ -121,8 +116,7 @@ private fun SelfChatBubble(
     modifier: Modifier = Modifier,
     message: String,
     timestamp: String,
-    sender: String? = null,
-    avatarUrl: String? = null,
+    sender: String,
     isContinuationBySameUser: Boolean = false,
 ) {
     Column(
@@ -142,7 +136,6 @@ private fun SelfChatBubble(
                     timestamp = timestamp,
                     sender = sender,
                     self = true,
-                    // showNameAlso = !isContinuationBySameUser,
                     showNameAlso = false
                 )
 
@@ -179,22 +172,22 @@ private fun RowScope.ChatUserAvatar(
         .size(28.dp)
         .clip(CircleShape)
         .align(Alignment.Bottom),
-    sender: String? = null,
+    sender: String,
     self: Boolean = true,
 ) {
     Box(
         modifier = modifier
             .background(
                 if (self) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant.copy(
-                    alpha = 0.25f
+                    alpha = 0.1f
                 ),
                 shape = CircleShape
             ),
         contentAlignment = Alignment.Center
     ) {
         Text(
-            text = sender?.first()?.uppercase() ?: if (self) "Y" else "",
-            color = if (self) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.surface,
+            text = sender.first().uppercase(),
+            color = if (self) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface,
             fontWeight = FontWeight.Bold,
             fontSize = 12.sp
         )
@@ -214,10 +207,10 @@ private fun MessageBubble(
 
     val bubbleColor =
         if (self) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant.copy(
-            alpha = 0.25f
+            alpha = 0.1f
         )
     val textColor =
-        if (self) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.surface
+        if (self) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface
 
     Box(
         modifier = Modifier
@@ -248,7 +241,7 @@ private fun MessageBubble(
 private fun TimestampAndName(
     modifier: Modifier = Modifier.padding(bottom = 4.dp),
     timestamp: String,
-    sender: String? = null,
+    sender: String,
     self: Boolean = true,
     showNameAlso: Boolean = true,
 ) {
@@ -265,7 +258,7 @@ private fun TimestampAndName(
         } else {
             if (showNameAlso) {
                 Text(
-                    text = sender ?: "Unknown",
+                    text = sender,
                     fontWeight = FontWeight.SemiBold,
                     style = MaterialTheme.typography.bodyMedium
                 )
