@@ -25,13 +25,15 @@ kotlin {
         version = "1.0"
         summary = "Shared module for MediaPipe LLM"
         homepage = "https://github.com/google/mediapipe"
-        ios.deploymentTarget = "15.0"
-
-        name = "AiAssistantCocoapod"
+        ios.deploymentTarget = "16.0"
 
         framework {
             baseName = "ComposeApp"
             isStatic = true
+
+            // Add these flags to fix the Swift Compatibility errors
+            linkerOpts("-L/usr/lib/swift", "-macosx_version_min", "11.0") // if building on macOS
+            linkerOpts("-L/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/iphonesimulator")
         }
 
         pod("MediaPipeTasksGenAIC") {
@@ -43,6 +45,9 @@ kotlin {
             version = "0.10.21"
             extraOpts += listOf("-compiler-option", "-fmodules")
         }
+
+        // Add this at the bottom of the cocoapods block
+        extraSpecAttributes["pod_target_xcconfig"] = "{ 'OTHER_LDFLAGS' => '-lObjC' }"
     }
     
     sourceSets {

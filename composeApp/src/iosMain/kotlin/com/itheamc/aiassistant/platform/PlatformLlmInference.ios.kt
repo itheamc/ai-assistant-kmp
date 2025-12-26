@@ -129,10 +129,12 @@ actual class PlatformLlmInference private constructor(private val options: Platf
 
 @OptIn(ExperimentalForeignApi::class)
 private fun PlatformLlmInference.PlatformLlmInferenceOptions.toMPPLLMInferenceOptions(): MPPLLMInferenceOptions {
-    val options = MPPLLMInferenceOptions()
-    modelPath?.let { options.setModelPath(it) }
-    maxTokens?.let { options.setMaxTokens(it.toLong()) }
-    maxTopK?.let { options.setMaxTopk(it.toLong()) }
-    supportedLoraRanks?.let { options.setSupportedLoraRanks(it) }
-    return options
+    val path = modelPath
+        ?: error("modelPath is required for MPPLLMInferenceOptions")
+
+    return MPPLLMInferenceOptions(modelPath = path).apply {
+        maxTokens?.let { setMaxTokens(it.toLong()) }
+        maxTopK?.let { setMaxTopk(it.toLong()) }
+        supportedLoraRanks?.let { setSupportedLoraRanks(it) }
+    }
 }

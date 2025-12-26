@@ -58,7 +58,7 @@ actual class PlatformLlmInferenceSession private constructor(
                 }
             )
         } catch (e: Exception) {
-            onError(e.message ?: "Something went wrong")
+            onError(e.message ?: e.cause?.message ?: "Something went wrong")
         }
     }
 
@@ -247,10 +247,11 @@ actual class PlatformLlmInferenceSession private constructor(
 
 @OptIn(ExperimentalForeignApi::class)
 private fun PlatformLlmInferenceSession.PlatformLlmInferenceSessionOptions.toMPPLLMInferenceSessionOptions(): MPPLLMInferenceSessionOptions {
-    val options = MPPLLMInferenceSessionOptions()
-    topK?.let { options.setTopk(it.toLong()) }
-    topP?.let { options.setTopp(it) }
-    temperature?.let { options.setTemperature(it) }
-    randomSeed?.let { options.setRandomSeed(it.toLong()) }
-    return options
+    return MPPLLMInferenceSessionOptions().apply {
+        topK?.let { setTopk(it.toLong()) }
+        topP?.let { setTopp(it) }
+        temperature?.let { setTemperature(it) }
+        randomSeed?.let { setRandomSeed(it.toLong()) }
+        loraPath?.let { setLoraPath(it) }
+    }
 }

@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import com.itheamc.aiassistant.core.storage.StorageKey.AI_MODEL_PATH
 import com.itheamc.aiassistant.core.storage.StorageService
 import com.itheamc.aiassistant.platform.FileDownloadState
+import com.itheamc.aiassistant.platform.Platform
 import com.itheamc.aiassistant.platform.PlatformFileDownloader
 import com.itheamc.aiassistant.platform.PlatformLlmInference
 import com.itheamc.aiassistant.platform.PlatformLlmInferenceSession
@@ -25,6 +26,12 @@ class AiChatViewModel(
     private val storageService: StorageService,
     private val downloadManager: PlatformFileDownloader,
 ) : ViewModel() {
+
+    val modelDownloadUrl: String by lazy {
+        if (Platform.isIOS()) "https://drive.usercontent.google.com/download?id=1umIHyhgXtGB-KKrhbsHLUEv-YfZmOqNh&export=download&authuser=0&confirm=t&uuid=b7f0dc97-9f1a-4749-9264-d8af2bf627db&at=ANTm3czP6Za_RizNrAgEqLw3kQuD%3A1766750737754" else "https://drive.usercontent.google.com/download?id=1dp_kMbf2KbXf3FjLvOf7MCA8D0mkgCXp&export=download&authuser=0&confirm=t&uuid=0a45b921-1631-4d24-8335-55695bb590b8&at=ANTm3cy6l1MDsW-9okfLIdHFejrV%3A1766478439477"
+    }
+
+    val modelFileName: String by lazy { if (Platform.isIOS()) "model.bin" else "model.task" }
 
     private val _uiState = MutableStateFlow(AiChatUiState())
     val uiState = _uiState.asStateFlow()
@@ -88,8 +95,8 @@ class AiChatViewModel(
      */
     private suspend fun downloadAndInitLlm() {
         downloadManager.download(
-            "https://drive.usercontent.google.com/download?id=1dp_kMbf2KbXf3FjLvOf7MCA8D0mkgCXp&export=download&authuser=0&confirm=t&uuid=0a45b921-1631-4d24-8335-55695bb590b8&at=ANTm3cy6l1MDsW-9okfLIdHFejrV%3A1766478439477",
-            "model.task"
+            modelDownloadUrl,
+            modelFileName
         ).collect { result ->
             when (result) {
                 is FileDownloadState.Error -> {
