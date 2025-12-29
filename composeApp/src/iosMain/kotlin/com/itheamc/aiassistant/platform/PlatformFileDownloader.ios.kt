@@ -1,9 +1,12 @@
 package com.itheamc.aiassistant.platform
 
+import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
+import platform.Foundation.NSDocumentDirectory
 import platform.Foundation.NSError
+import platform.Foundation.NSFileManager
 import platform.Foundation.NSOperationQueue
 import platform.Foundation.NSURL
 import platform.Foundation.NSURLSession
@@ -11,6 +14,7 @@ import platform.Foundation.NSURLSessionConfiguration
 import platform.Foundation.NSURLSessionDownloadDelegateProtocol
 import platform.Foundation.NSURLSessionDownloadTask
 import platform.Foundation.NSURLSessionTask
+import platform.Foundation.NSUserDomainMask
 import platform.darwin.NSObject
 
 @Suppress("EXPECT_ACTUAL_CLASSIFIERS_ARE_IN_BETA_WARNING")
@@ -24,6 +28,7 @@ actual class PlatformFileDownloader {
         }
 
         val delegate = DownloadDelegate(
+            fileName = fileName,
             onProgress = { progress ->
                 trySend(FileDownloadState.InProgress(progress))
             },
@@ -57,17 +62,43 @@ actual class PlatformFileDownloader {
 }
 
 private class DownloadDelegate(
+    private val fileName: String,
     private val onProgress: (Float) -> Unit,
     private val onComplete: (String?) -> Unit,
     private val onError: (String) -> Unit
 ) : NSObject(), NSURLSessionDownloadDelegateProtocol {
 
+    @OptIn(ExperimentalForeignApi::class)
     override fun URLSession(
         session: NSURLSession,
         downloadTask: NSURLSessionDownloadTask,
         didFinishDownloadingToURL: NSURL
     ) {
-        onComplete(didFinishDownloadingToURL.path)
+        // 1. Get the file manager
+        val fileManager = NSFileManager.defaultManager
+
+        // 2. Get the Documents directory path
+        val documentsPath = fileManager.URLsForDirectory(
+            NSDocumentDirectory,
+            NSUserDomainMask
+        ).first() as NSURL
+
+        // 3. Create the destination URL with your fileName
+        val destinationUrl = documentsPath.URLByAppendingPathComponent(fileName)!!
+
+        try {
+            // Remove existing file if it exists to avoid move errors
+            if (fileManager.fileExistsAtPath(destinationUrl.path!!)) {
+                fileManager.removeItemAtURL(destinationUrl, null)
+            }
+
+            // 4. Move the file from the .tmp path to your destination
+            fileManager.moveItemAtURL(didFinishDownloadingToURL, destinationUrl, null)
+
+            onComplete(destinationUrl.path)
+        } catch (e: Exception) {
+            onError("Failed to save file: ${e.message}")
+        }
     }
 
     override fun URLSession(
@@ -91,47 +122,3 @@ private class DownloadDelegate(
         }
     }
 }
-
-//@Suppress("EXPECT_ACTUAL_CLASSIFIERS_ARE_IN_BETA_WARNING")
-//actual class PlatformFileDownloader {
-//
-//    @OptIn(ExperimentalForeignApi::class)
-//    actual fun download(url: String, fileName: String): Flow<FileDownloadState> = callbackFlow {
-//        val nsUrl = NSURL(string = url)
-//        val session = NSURLSession.sharedSession
-//
-//        val downloadTask = session.downloadTaskWithURL(nsUrl) { location, response, error ->
-//            if (error != null) {
-//                trySend(FileDownloadState.Error(error.localizedDescription))
-//            } else if (location != null) {
-//                val fileManager = NSFileManager.defaultManager
-//                val documentsPath = fileManager.URLsForDirectory(
-//                    NSDocumentDirectory,
-//                    NSUserDomainMask
-//                ).first() as NSURL
-//
-//                val destinationURL = documentsPath.URLByAppendingPathComponent(fileName)
-//
-//                try {
-//                    // Remove existing file if any
-//                    if (fileManager.fileExistsAtPath(destinationURL!!.path!!)) {
-//                        fileManager.removeItemAtURL(destinationURL, null)
-//                    }
-//
-//                    // Move downloaded file
-//                    fileManager.moveItemAtURL(location, destinationURL, null)
-//                    trySend(FileDownloadState.Success(destinationURL.path!!))
-//                } catch (e: Exception) {
-//                    trySend(FileDownloadState.Error(e.message ?: "Failed to save file"))
-//                }
-//            }
-//            close()
-//        }
-//
-//        downloadTask.resume()
-//
-//        awaitClose {
-//            downloadTask.cancel()
-//        }
-//    }
-//}
