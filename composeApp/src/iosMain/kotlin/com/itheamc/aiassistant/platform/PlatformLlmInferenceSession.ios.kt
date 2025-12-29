@@ -2,20 +2,39 @@ package com.itheamc.aiassistant.platform
 
 import cocoapods.MediaPipeTasksGenAI.MPPLLMInferenceSession
 import cocoapods.MediaPipeTasksGenAI.MPPLLMInferenceSessionOptions
+import kotlinx.cinterop.BetaInteropApi
 import kotlinx.cinterop.ExperimentalForeignApi
+import kotlinx.cinterop.ObjCObjectVar
+import kotlinx.cinterop.alloc
+import kotlinx.cinterop.memScoped
+import kotlinx.cinterop.ptr
+import kotlinx.cinterop.value
+import platform.Foundation.NSError
+
 
 @Suppress(names = ["EXPECT_ACTUAL_CLASSIFIERS_ARE_IN_BETA_WARNING"])
 actual class PlatformLlmInferenceSession private constructor(
     llmInference: PlatformLlmInference,
     options: PlatformLlmInferenceSessionOptions
 ) {
-    @OptIn(ExperimentalForeignApi::class)
-    private val llmInferenceSession: MPPLLMInferenceSession by lazy {
-        MPPLLMInferenceSession(
-            llmInference = llmInference.llmInference,
-            options = options.toMPPLLMInferenceSessionOptions(),
-            error = null
-        )
+    @OptIn(ExperimentalForeignApi::class, BetaInteropApi::class)
+    internal val llmInferenceSession: MPPLLMInferenceSession by lazy {
+        memScoped {
+            val errorPtr = alloc<ObjCObjectVar<NSError?>>()
+
+            val session = MPPLLMInferenceSession(
+                llmInference = llmInference.llmInference,
+                options = options.toMPPLLMInferenceSessionOptions(),
+                error = errorPtr.ptr
+            )
+
+            val error = errorPtr.value
+            require(error == null) {
+                "Failed to create MPPLLMInferenceSession: ${error?.localizedDescription}"
+            }
+
+            session
+        }
     }
 
     @OptIn(ExperimentalForeignApi::class)
@@ -33,31 +52,68 @@ actual class PlatformLlmInferenceSession private constructor(
         }
     }
 
-    @OptIn(ExperimentalForeignApi::class)
+    @OptIn(ExperimentalForeignApi::class, BetaInteropApi::class)
     actual fun generateResponseAsync(
         text: String,
         listener: (partialResult: String, done: Boolean) -> Unit,
         onError: (String) -> Unit
     ) {
         try {
-            llmInferenceSession.addQueryChunkWithInputText(text, error = null)
+            // llmInferenceSession.addQueryChunkWithInputText(text, error = null)
 
-            llmInferenceSession.generateResponseAsyncAndReturnError(
-                error = null,
-                progress = { partialResult, error ->
-                    if (error != null) {
-                        onError(error.localizedDescription)
-                        return@generateResponseAsyncAndReturnError
-                    }
-                    if (partialResult != null) {
-                        listener(partialResult, false)
-                    }
-                },
-                completion = {
-                    listener("", true)
+            // llmInferenceSession.generateResponseAsyncAndReturnError(
+            //     error = null,
+            //     progress = { partialResult, error ->
+            //         if (error != null) {
+            //             onError(error.localizedDescription)
+            //             return@generateResponseAsyncAndReturnError
+            //         }
+            //         if (partialResult != null) {
+            //             listener(partialResult, false)
+            //         }
+            //     },
+            //     completion = {
+            //         listener("", true)
+            //     }
+            // )
+            memScoped {
+                // Allocate NSError pointer
+                val errorPtr = alloc<ObjCObjectVar<NSError?>>()
+
+                // Add query chunk safely
+                llmInferenceSession.addQueryChunkWithInputText(text, error = errorPtr.ptr)
+                val addError = errorPtr.value
+                if (addError != null) {
+                    onError("Failed to add query: ${addError.localizedDescription}")
+                    return@memScoped
                 }
-            )
+
+                // Reset the error pointer for async generation
+                errorPtr.value = null
+
+                llmInferenceSession.generateResponseAsyncAndReturnError(
+                    error = errorPtr.ptr,
+                    progress = { partialResult, error ->
+                        if (error != null) {
+                            onError(error.localizedDescription)
+                            return@generateResponseAsyncAndReturnError
+                        }
+                        if (partialResult != null) {
+                            listener(partialResult, false)
+                        }
+                    },
+                    completion = {
+                        listener("", true)
+                    }
+                )
+
+                val genError = errorPtr.value
+                if (genError != null) {
+                    onError("Failed to generate response: ${genError.localizedDescription}")
+                }
+            }
         } catch (e: Exception) {
+            e.printStackTrace()
             onError(e.message ?: e.cause?.message ?: "Something went wrong")
         }
     }

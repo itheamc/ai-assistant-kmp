@@ -2,14 +2,35 @@ package com.itheamc.aiassistant.platform
 
 import cocoapods.MediaPipeTasksGenAI.MPPLLMInference
 import cocoapods.MediaPipeTasksGenAI.MPPLLMInferenceOptions
+import kotlinx.cinterop.BetaInteropApi
 import kotlinx.cinterop.ExperimentalForeignApi
+import kotlinx.cinterop.ObjCObjectVar
+import kotlinx.cinterop.alloc
+import kotlinx.cinterop.memScoped
+import kotlinx.cinterop.ptr
+import kotlinx.cinterop.value
+import platform.Foundation.NSError
 
 @Suppress("EXPECT_ACTUAL_CLASSIFIERS_ARE_IN_BETA_WARNING")
 actual class PlatformLlmInference private constructor(private val options: PlatformLlmInferenceOptions) {
 
-    @OptIn(ExperimentalForeignApi::class)
+    @OptIn(ExperimentalForeignApi::class, BetaInteropApi::class)
     internal val llmInference: MPPLLMInference by lazy {
-        MPPLLMInference(options = options.toMPPLLMInferenceOptions(), error = null)
+        memScoped {
+            val errorPtr = alloc<ObjCObjectVar<NSError?>>()
+
+            val session = MPPLLMInference(
+                options = options.toMPPLLMInferenceOptions(),
+                error = errorPtr.ptr
+            )
+
+            val error = errorPtr.value
+            require(error == null) {
+                "Failed to create MPPLLMInference: ${error?.localizedDescription}"
+            }
+
+            session
+        }
     }
 
     actual val sentencePieceProcessorHandle: Long
