@@ -1,3 +1,4 @@
+import com.android.build.api.dsl.androidLibrary
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 plugins {
@@ -32,12 +33,12 @@ kotlin {
             isStatic = true
 
             // Add these flags to fix the Swift Compatibility errors
-            linkerOpts("-L/usr/lib/swift", "-macosx_version_min", "11.0") // if building on macOS
-            linkerOpts("-L/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/iphonesimulator")
+            // linkerOpts("-L/usr/lib/swift", "-macosx_version_min", "11.0") // if building on macOS
+            // linkerOpts("-L/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/iphonesimulator")
         }
 
         pod("MediaPipeTasksGenAIC") {
-            version = "~> 0.10.21"
+            version = "0.10.21"
             extraOpts += listOf("-compiler-option", "-fmodules")
         }
 
@@ -47,9 +48,9 @@ kotlin {
         }
 
         // Add this at the bottom of the cocoapods block
-        extraSpecAttributes["pod_target_xcconfig"] = "{ 'OTHER_LDFLAGS' => '-lObjC' }"
+        // extraSpecAttributes["pod_target_xcconfig"] = "{ 'OTHER_LDFLAGS' => '-lObjC' }"
     }
-    
+
     sourceSets {
         androidMain.dependencies {
             implementation(compose.preview)
