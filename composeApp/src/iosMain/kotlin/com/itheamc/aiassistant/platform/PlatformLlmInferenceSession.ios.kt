@@ -42,11 +42,16 @@ actual class PlatformLlmInferenceSession private constructor(
         return 0
     }
 
-    @OptIn(ExperimentalForeignApi::class)
+    @OptIn(ExperimentalForeignApi::class, BetaInteropApi::class)
     actual fun generateResponse(text: String): String? {
         return try {
-            llmInferenceSession.addQueryChunkWithInputText(text, error = null)
-            llmInferenceSession.generateResponseAndReturnError(error = null)
+            llmInferenceSession.addQueryChunkWithInputText(text, error = null).let { added ->
+                if (added) {
+                    llmInferenceSession.generateResponseAndReturnError(error = null)
+                } else {
+                    ""
+                }
+            }
         } catch (_: Exception) {
             ""
         }
@@ -59,23 +64,6 @@ actual class PlatformLlmInferenceSession private constructor(
         onError: (String) -> Unit
     ) {
         try {
-            // llmInferenceSession.addQueryChunkWithInputText(text, error = null)
-
-            // llmInferenceSession.generateResponseAsyncAndReturnError(
-            //     error = null,
-            //     progress = { partialResult, error ->
-            //         if (error != null) {
-            //             onError(error.localizedDescription)
-            //             return@generateResponseAsyncAndReturnError
-            //         }
-            //         if (partialResult != null) {
-            //             listener(partialResult, false)
-            //         }
-            //     },
-            //     completion = {
-            //         listener("", true)
-            //     }
-            // )
             memScoped {
                 // Allocate NSError pointer
                 val errorPtr = alloc<ObjCObjectVar<NSError?>>()
