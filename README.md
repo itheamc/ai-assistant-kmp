@@ -1,63 +1,87 @@
-# AiAssistant - Kotlin Multiplatform Project
+# AiAssistant - Kotlin Multiplatform On-Device AI
 
-This is a Kotlin Multiplatform project targeting Android and iOS, featuring LLM capabilities via Google MediaPipe.
+AiAssistant is a Kotlin Multiplatform (KMP) project that brings Large Language Models (LLMs) directly to Android and iOS devices. Using Google's MediaPipe GenAI, it performs high-performance AI inference entirely on-device, ensuring privacy and offline capability.
 
-## Project Structure
+## ✨ Features
+- **On-Device LLM:** Private and secure AI chat without cloud dependency.
+- **Cross-Platform:** Shared business logic and UI across Android and iOS using Compose Multiplatform.
+- **Dynamic Model Loading:** Efficiently downloads and manages heavy LLM weights (Gemma, etc.) at runtime.
+- **Streaming Responses:** Real-time token generation for a responsive chat experience.
 
-* [/composeApp](./composeApp/src) - Shared code for Android and iOS.
-  - [commonMain](./composeApp/src/commonMain/kotlin) - UI and logic shared across all platforms.
-  - [androidMain](./composeApp/src/androidMain/kotlin) - Android-specific implementation using MediaPipe Tasks GenAI.
-  - [iosMain](./composeApp/src/iosMain/kotlin) - iOS-specific implementation using CocoaPods for MediaPipe.
-* [/iosApp](./iosApp) - The native iOS wrapper application.
+## 🛠 Tech Stack
+- **Framework:** [Kotlin Multiplatform (KMP)](https://kotlinlang.org/docs/multiplatform.html)
+- **UI:** [Compose Multiplatform](https://www.jetbrains.com/lp/compose-multiplatform/)
+- **AI Engine:** [MediaPipe GenAI Tasks](https://developers.google.com/mediapipe/solutions/genai/llm_inference)
+- **DI:** [Koin](https://insert-koin.io/)
+- **Concurrency:** [Kotlin Coroutines](https://kotlinlang.org/docs/coroutines-overview.html)
+- **Storage:** [Jetpack DataStore](https://developer.android.com/topic/libraries/architecture/datastore) (Preferences)
 
-## CocoaPods & MediaPipe Integration
-
-The project uses the `kotlin-cocoapods` plugin to manage iOS dependencies and integrate with Xcode.
-
-### 1. Dependencies and Configuration
-
-The following files were updated to support the CocoaPods setup:
-
-*   **`gradle/libs.versions.toml`**: Defines the `kotlinCocoapods` plugin.
-*   **`build.gradle.kts` (root)**: Applies the `kotlinCocoapods` plugin.
-*   **`composeApp/build.gradle.kts`**: 
-    - Applies the `kotlinCocoapods` plugin.
-    - Configures the `cocoapods` block with:
-        - `ios.deploymentTarget = "15.0"`
-        - `framework { baseName = "ComposeApp" }`
-        - Pod dependencies: `MediaPipeTasksGenAIC` and `MediaPipeTasksGenAI`.
-    - Explicitly declares iOS targets (`iosX64`, `iosArm64`, `iosSimulatorArm64`).
-*   **`gradle.properties`**: 
-    - Added `kotlin.apple.deprecated.allowUsingEmbedAndSignWithCocoaPodsDependencies=true` to resolve conflicts between manual embedding and CocoaPods management.
-
-### 2. Manual Setup Steps
-
-To build the iOS target, follow these steps:
-
-1.  **Install CocoaPods**: Ensure you have CocoaPods installed on your system (`brew install cocoapods`).
-2.  **Generate Podfile and Install**:
-    Navigate to the `iosApp` directory and run:
-    ```bash
-    cd iosApp
-    pod install
-    ```
-    This will generate the `.xcworkspace` and link the Kotlin framework as a pod.
-3.  **Open Workspace**:
-    Always open `iosApp.xcworkspace` in Xcode (instead of `.xcodeproj`).
-4.  **Xcode Build Phase**:
-    Ensure the "Run Script" phase that calls `embedAndSignAppleFrameworkForXcode` is removed or disabled if you rely entirely on CocoaPods for framework integration.
-
-## Build and Run
-
-### Android
-- Run from Android Studio or:
-  ```bash
-  ./gradlew :composeApp:assembleDebug
-  ```
-
-### iOS
-- Run from Xcode using the `iosApp` scheme.
+## 📂 Project Structure
+- `composeApp/src/commonMain`: Shared UI components, ViewModels, and core logic.
+- `composeApp/src/androidMain`: Android implementation of MediaPipe GenAI.
+- `composeApp/src/iosMain`: iOS implementation of MediaPipe GenAI via CocoaPods.
+- `iosApp`: Native iOS project wrapper using the shared `composeApp` framework.
 
 ---
 
-Learn more about [Kotlin Multiplatform](https://www.jetbrains.com/help/kotlin-multiplatform-dev/get-started.html) and [MediaPipe LLM Inference](https://developers.google.com/mediapipe/solutions/genai/llm_inference).
+## 🚀 Setup & Installation
+
+### Prerequisites
+- **JDK 17**
+- **Android Studio** (Latest stable version)
+- **Xcode** 16.0+
+- **CocoaPods** (`brew install cocoapods`)
+
+### 📱 Android Setup
+1. Open the project in **Android Studio**.
+2. The `AndroidManifest.xml` is pre-configured with `INTERNET` permissions for model downloading and a custom `LlmContextInitializer`.
+3. Select the `composeApp` run configuration and target an Android device (API 24+).
+4. Run the app.
+
+### 🍎 iOS Setup (CocoaPods)
+The project uses the `kotlin-cocoapods` plugin for seamless integration with the Apple ecosystem.
+
+1. **Configure Gradle**: Ensure `gradle.properties` contains:
+   ```properties
+   kotlin.apple.deprecated.allowUsingEmbedAndSignWithCocoaPodsDependencies=true
+   ```
+2. **Install Pods**:
+   ```bash
+   ./gradlew podInstall
+   ./gradlew :composeApp:generateDummyFramework
+   ```
+   And then,
+
+   ```bash
+   cd iosApp
+   pod install
+   ```
+3. **Open Workspace**: Always open `iosApp.xcworkspace` in Xcode.
+4. **Static Linkage**: The project is configured for static linkage in the `Podfile`:
+   ```ruby
+   use_frameworks! :linkage => :static
+   ```
+5. **Run**: Select an iOS Simulator (iOS 16.0+) or physical device and press **Cmd + R**.
+
+---
+
+## 🏗 Configuration Details
+
+### Gradle Configuration (`composeApp/build.gradle.kts`)
+- **CocoaPods Block**: Configures the shared framework name as `ComposeApp` and links `MediaPipeTasksGenAI`.
+- **Target SDKs**: Android Compile/Target SDK 36, Min SDK 24.
+- **iOS Target**: Deployment Target 16.0.
+
+### MediaPipe Models
+The app is designed to work with models like **Gemma 2b**.
+- **Android**: Expects a `.task` model file.
+- **iOS**: Expects a `.bin` model file.
+The `AiAssistantViewModel` handles the platform-specific URL and filename mapping automatically.
+
+---
+
+## 🤝 Contributing
+Contributions are welcome! Please feel free to submit a Pull Request.
+
+## 📄 License
+This project is licensed under the MIT License.
