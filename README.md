@@ -32,6 +32,81 @@ AiAssistant is a Kotlin Multiplatform (KMP) project that brings Large Language M
 - **Xcode** 16.0+
 - **CocoaPods** (`brew install cocoapods`)
 
+### 🐘 Gradle Setup
+The project uses Version Catalogs for dependency management. Ensure your `composeApp/build.gradle.kts` is configured as follows:
+
+```kotlin
+plugins {
+
+    // ... other plugins
+    
+    alias(libs.plugins.kotlinCocoapods)
+}
+
+kotlin {
+
+    // ... other configuration
+    
+    iosX64()
+    iosArm64()
+    iosSimulatorArm64()
+
+    cocoapods {
+        version = "1.0"
+        summary = "Shared module for MediaPipe LLM"
+        homepage = "https://github.com/google/mediapipe"
+        ios.deploymentTarget = "16.0"
+
+        framework {
+            baseName = "ComposeApp"
+            isStatic = true
+        }
+
+        pod("MediaPipeTasksGenAI") {
+            extraOpts += listOf("-compiler-option", "-fmodules")
+        }
+    }
+
+    sourceSets {
+
+        androidMain.dependencies {
+            // ... other common dependencies
+            
+            // MediaPipe LLM Inference
+            implementation(libs.mediapipe.tasks.genai)
+            implementation(libs.mediapipe.tasks.vision)
+        }
+    }
+
+    // ... other configuration
+}
+```
+
+```toml
+[versions]
+
+# Others...
+
+# LLM Inference (mediapipe task gen)
+mediapipe = "0.10.29"
+
+[libraries]
+
+# Others libraries ...
+
+# LLM Inference (mediapipe task gen)
+mediapipe-tasks-genai = { module = "com.google.mediapipe:tasks-genai", version.ref = "mediapipe" }
+mediapipe-tasks-vision = { module = "com.google.mediapipe:tasks-vision", version.ref = "mediapipe" }
+
+
+[plugins]
+
+# Other plugins ...
+
+# Cocoapods
+kotlinCocoapods = { id = "org.jetbrains.kotlin.native.cocoapods", version.ref = "kotlin" }
+```
+
 ### 📱 Android Setup
 1. Open the project in **Android Studio**.
 2. The `AndroidManifest.xml` is pre-configured with `INTERNET` permissions for model downloading and a custom `LlmContextInitializer`.
@@ -51,7 +126,6 @@ The project uses the `kotlin-cocoapods` plugin for seamless integration with the
    ./gradlew :composeApp:generateDummyFramework
    ```
    And then,
-
    ```bash
    cd iosApp
    pod install
@@ -66,11 +140,6 @@ The project uses the `kotlin-cocoapods` plugin for seamless integration with the
 ---
 
 ## 🏗 Configuration Details
-
-### Gradle Configuration (`composeApp/build.gradle.kts`)
-- **CocoaPods Block**: Configures the shared framework name as `ComposeApp` and links `MediaPipeTasksGenAI`.
-- **Target SDKs**: Android Compile/Target SDK 36, Min SDK 24.
-- **iOS Target**: Deployment Target 16.0.
 
 ### MediaPipe Models
 The app is designed to work with models like **Gemma 2b**.
