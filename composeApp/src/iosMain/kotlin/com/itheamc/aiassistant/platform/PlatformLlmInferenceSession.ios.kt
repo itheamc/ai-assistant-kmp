@@ -1,5 +1,7 @@
 package com.itheamc.aiassistant.platform
 
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.toPixelMap
 import cocoapods.MediaPipeTasksGenAI.MPPLLMInferenceSession
 import cocoapods.MediaPipeTasksGenAI.MPPLLMInferenceSessionOptions
 import kotlinx.cinterop.BetaInteropApi
@@ -8,7 +10,14 @@ import kotlinx.cinterop.ObjCObjectVar
 import kotlinx.cinterop.alloc
 import kotlinx.cinterop.memScoped
 import kotlinx.cinterop.ptr
+import kotlinx.cinterop.toCValues
 import kotlinx.cinterop.value
+import platform.CoreGraphics.CGColorRenderingIntent
+import platform.CoreGraphics.CGColorSpaceCreateDeviceRGB
+import platform.CoreGraphics.CGDataProviderCreateWithData
+import platform.CoreGraphics.CGImageAlphaInfo
+import platform.CoreGraphics.CGImageCreate
+import platform.CoreGraphics.CGImageRef
 import platform.Foundation.NSError
 
 
@@ -43,15 +52,18 @@ actual class PlatformLlmInferenceSession private constructor(
     }
 
     @OptIn(ExperimentalForeignApi::class, BetaInteropApi::class)
-    actual fun generateResponse(text: String): String? {
+    actual fun generateResponse(text: String, image: ImageBitmap?): String? {
         return try {
-            llmInferenceSession.addQueryChunkWithInputText(text, error = null).let { added ->
-                if (added) {
-                    llmInferenceSession.generateResponseAndReturnError(error = null)
-                } else {
-                    ""
-                }
+            llmInferenceSession.addQueryChunkWithInputText(text, error = null)
+
+            image?.let {
+                llmInferenceSession.addImageWithImage(
+                    image = it.toCGImage(),
+                    error = null
+                )
             }
+
+            llmInferenceSession.generateResponseAndReturnError(error = null)
         } catch (_: Exception) {
             ""
         }
@@ -60,6 +72,7 @@ actual class PlatformLlmInferenceSession private constructor(
     @OptIn(ExperimentalForeignApi::class, BetaInteropApi::class)
     actual fun generateResponseAsync(
         text: String,
+        image: ImageBitmap?,
         listener: (partialResult: String, done: Boolean) -> Unit,
         onError: (String) -> Unit
     ) {
@@ -78,6 +91,19 @@ actual class PlatformLlmInferenceSession private constructor(
 
                 // Reset the error pointer for async generation
                 errorPtr.value = null
+
+                image?.let {
+                    llmInferenceSession.addImageWithImage(
+                        image = it.toCGImage(),
+                        error = errorPtr.ptr
+                    )
+
+                    val addImageError = errorPtr.value
+                    if (addImageError != null) {
+                        onError("Failed to add image: ${addImageError.localizedDescription}")
+                        return@memScoped
+                    }
+                }
 
                 llmInferenceSession.generateResponseAsyncAndReturnError(
                     error = errorPtr.ptr,
@@ -297,5 +323,46 @@ private fun PlatformLlmInferenceSession.PlatformLlmInferenceSessionOptions.toMPP
         temperature?.let { setTemperature(it) }
         randomSeed?.let { setRandomSeed(it.toLong()) }
         loraPath?.let { setLoraPath(it) }
+        graphOptions?.let {
+            setEnableVisionModality(it.enableVisionModality ?: false)
+        }
+    }
+}
+
+
+@OptIn(ExperimentalForeignApi::class)
+private fun ImageBitmap.toCGImage(): CGImageRef? {
+    val width = this.width
+    val height = this.height
+
+    val pixelMap = this.toPixelMap()
+
+    return memScoped {
+        val colorSpace = CGColorSpaceCreateDeviceRGB()
+
+        val bytesPerPixel = 4
+        val bitsPerComponent = 8
+        val bytesPerRow = width * bytesPerPixel
+
+        val provider = CGDataProviderCreateWithData(
+            null,
+            pixelMap.buffer.toCValues(),
+            pixelMap.buffer.size.toULong(),
+            null
+        )
+
+        CGImageCreate(
+            width.toULong(),
+            height.toULong(),
+            bitsPerComponent.toULong(),
+            (bitsPerComponent * bytesPerPixel).toULong(),
+            bytesPerRow.toULong(),
+            colorSpace,
+            CGImageAlphaInfo.kCGImageAlphaPremultipliedLast.value,
+            provider,
+            null,
+            false,
+            CGColorRenderingIntent.kCGRenderingIntentDefault
+        )
     }
 }

@@ -24,10 +24,13 @@ navigation = "2.9.1"
 datastore = "1.2.0"
 
 # LLM Inference (mediapipe task gen)
-tasksGenAi = "0.10.29"
+mediapipe = "0.10.29"
 
 # Kotlin Datatime
 dateTime = "0.7.1"
+
+# FileKit
+filekit = "0.12.0"
 
 [libraries]
 kotlin-test = { module = "org.jetbrains.kotlin:kotlin-test", version.ref = "kotlin" }
@@ -57,10 +60,15 @@ androidx-datastore = { module = "androidx.datastore:datastore", version.ref = "d
 androidx-datastore-preferences = { module = "androidx.datastore:datastore-preferences", version.ref = "datastore" }
 
 # LLM Inference (mediapipe task gen)
-mediapipe-tasks-genai = { module = "com.google.mediapipe:tasks-genai", version.ref = "tasksGenAi" }
+mediapipe-tasks-genai = { module = "com.google.mediapipe:tasks-genai", version.ref = "mediapipe" }
+mediapipe-tasks-vision = { module = "com.google.mediapipe:tasks-vision", version.ref = "mediapipe" }
 
 # Kotlin Datetime
 kotlinx-datetime = { module = "org.jetbrains.kotlinx:kotlinx-datetime", version.ref = "dateTime" }
+
+# FileKit
+filekit-dialogs = { module = "io.github.vinceglb:filekit-dialogs", version.ref = "filekit" }
+filekit-dialogs-compose = { module = "io.github.vinceglb:filekit-dialogs-compose", version.ref = "filekit" }
 
 [plugins]
 androidApplication = { id = "com.android.application", version.ref = "agp" }

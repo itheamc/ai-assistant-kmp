@@ -1,14 +1,17 @@
 package com.itheamc.aiassistant.platform
 
+import androidx.compose.ui.graphics.ImageBitmap
+
 @Suppress("EXPECT_ACTUAL_CLASSIFIERS_ARE_IN_BETA_WARNING")
 expect class PlatformLlmInferenceSession {
 
     fun sizeInTokens(text: String): Int
 
-    fun generateResponse(text: String): String?
+    fun generateResponse(text: String, image: ImageBitmap? = null): String?
 
     fun generateResponseAsync(
         text: String,
+        image: ImageBitmap? = null,
         listener: (partialResult: String, done: Boolean) -> Unit,
         onError: (String) -> Unit
     )

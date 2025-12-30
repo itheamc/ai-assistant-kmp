@@ -1,5 +1,8 @@
 package com.itheamc.aiassistant.platform
 
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asAndroidBitmap
+import com.google.mediapipe.framework.image.BitmapImageBuilder
 import com.google.mediapipe.tasks.genai.llminference.GraphOptions
 import com.google.mediapipe.tasks.genai.llminference.LlmInferenceSession
 import com.google.mediapipe.tasks.genai.llminference.PromptTemplates
@@ -12,7 +15,7 @@ actual class PlatformLlmInferenceSession private constructor(
     private val llmInferenceSession: LlmInferenceSession by lazy {
         LlmInferenceSession.createFromOptions(
             llmInference.llmInference,
-            options.toLlmInference()
+            options.toLlmInferenceSessionOptions()
         )
     }
 
@@ -24,9 +27,18 @@ actual class PlatformLlmInferenceSession private constructor(
         }
     }
 
-    actual fun generateResponse(text: String): String? {
+    actual fun generateResponse(text: String, image: ImageBitmap?): String? {
         return try {
             llmInferenceSession.addQueryChunk(text)
+
+            runCatching {
+                image?.let {
+                    llmInferenceSession.addImage(
+                        BitmapImageBuilder(it.asAndroidBitmap()).build()
+                    )
+                }
+            }
+
             llmInferenceSession.generateResponse()
         } catch (_: Exception) {
             ""
@@ -35,11 +47,20 @@ actual class PlatformLlmInferenceSession private constructor(
 
     actual fun generateResponseAsync(
         text: String,
+        image: ImageBitmap?,
         listener: (partialResult: String, done: Boolean) -> Unit,
         onError: (String) -> Unit
     ) {
         try {
             llmInferenceSession.addQueryChunk(text)
+
+            runCatching {
+                image?.let {
+                    llmInferenceSession.addImage(
+                        BitmapImageBuilder(it.asAndroidBitmap()).build()
+                    )
+                }
+            }
 
             llmInferenceSession.generateResponseAsync { partialResult, done ->
                 listener(partialResult, done)
@@ -236,7 +257,7 @@ actual class PlatformLlmInferenceSession private constructor(
 }
 
 
-private fun PlatformLlmInferenceSession.PlatformLlmInferenceSessionOptions.toLlmInference(): LlmInferenceSession.LlmInferenceSessionOptions {
+private fun PlatformLlmInferenceSession.PlatformLlmInferenceSessionOptions.toLlmInferenceSessionOptions(): LlmInferenceSession.LlmInferenceSessionOptions {
     val builder = LlmInferenceSession.LlmInferenceSessionOptions.builder()
 
     topK?.let { builder.setTopK(it) }
