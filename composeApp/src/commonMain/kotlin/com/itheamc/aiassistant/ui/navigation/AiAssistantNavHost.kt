@@ -5,14 +5,13 @@ import androidx.compose.animation.SharedTransitionLayout
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.foundation.layout.Column
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
-import com.itheamc.aiassistant.ui.features.ai.views.screens.AiChatScreen
+import com.itheamc.aiassistant.ui.features.ai.views.screens.AiAssistantScreen
 import com.itheamc.aiassistant.ui.features.onboarding.views.screens.OnboardingScreen
 import com.itheamc.aiassistant.ui.features.splash.views.screens.SplashScreen
 
@@ -66,7 +65,7 @@ fun AiAssistantNavHost(
                 popEnterTransition = { fadeIn(tween(250)) },
                 popExitTransition = { fadeOut(tween(200)) }
             ) {
-                AiChatScreen(
+                AiAssistantScreen(
                     sharedTransitionScope = this@SharedTransitionLayout,
                     animatedContentScope = this@composable
                 )

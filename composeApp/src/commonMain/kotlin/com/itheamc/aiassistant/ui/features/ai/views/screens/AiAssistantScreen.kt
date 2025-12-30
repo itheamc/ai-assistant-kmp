@@ -29,9 +29,6 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.Placeholder
@@ -43,25 +40,23 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.itheamc.aiassistant.ui.common.AiAssistantAppLogo
 import com.itheamc.aiassistant.ui.features.ai.models.ChatMessage
-import com.itheamc.aiassistant.ui.features.ai.viewmodels.AiChatViewModel
+import com.itheamc.aiassistant.ui.features.ai.viewmodels.AiAssistantViewModel
 import com.itheamc.aiassistant.ui.features.ai.views.composables.ChatBubble
 import com.itheamc.aiassistant.ui.features.ai.views.composables.ChatInputBar
-import com.itheamc.aiassistant.ui.local_providers.LocalNavController
 import org.koin.compose.viewmodel.koinViewModel
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalSharedTransitionApi::class)
 @Composable
-fun AiChatScreen(
+fun AiAssistantScreen(
     modifier: Modifier = Modifier,
     sharedTransitionScope: SharedTransitionScope? = null,
     animatedContentScope: AnimatedContentScope? = null,
 ) {
 
-
-    val viewModel = koinViewModel<AiChatViewModel>()
+    val viewModel = koinViewModel<AiAssistantViewModel>()
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
-    var inputText by remember { mutableStateOf("") }
     val listState = rememberLazyListState()
+
 
     // Scroll to bottom when new messages arrive
     LaunchedEffect(uiState.messages.size) {
@@ -106,12 +101,12 @@ fun AiChatScreen(
         bottomBar = {
             if (uiState.isModelReady) {
                 ChatInputBar(
-                    text = inputText,
-                    onTextChange = { inputText = it },
-                    onSendClick = {
-                        if (inputText.isNotBlank()) {
-                            viewModel.sendMessage(inputText)
-                            inputText = ""
+                    onSendClick = { text, image ->
+                        if (text.isNotBlank() || image != null) {
+                            viewModel.sendMessage(
+                                text = text,
+                                image = image,
+                            )
                         }
                     },
                     onStopClick = {

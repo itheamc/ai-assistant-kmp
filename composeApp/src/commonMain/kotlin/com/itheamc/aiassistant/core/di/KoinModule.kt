@@ -1,7 +1,7 @@
 package com.itheamc.aiassistant.core.di
 
 import com.itheamc.aiassistant.core.storage.StorageService
-import com.itheamc.aiassistant.ui.features.ai.viewmodels.AiChatViewModel
+import com.itheamc.aiassistant.ui.features.ai.viewmodels.AiAssistantViewModel
 import org.koin.core.module.Module
 import org.koin.core.module.dsl.singleOf
 import org.koin.core.module.dsl.viewModelOf
@@ -13,7 +13,7 @@ expect val platformModule: Module
 
 val commonModules = module {
     singleOf(::StorageService)
-    viewModelOf(::AiChatViewModel)
+    viewModelOf(::AiAssistantViewModel)
 }
 
 val koinConfig: KoinConfiguration = koinConfiguration {

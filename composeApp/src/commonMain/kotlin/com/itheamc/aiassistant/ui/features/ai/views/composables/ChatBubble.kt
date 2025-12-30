@@ -1,5 +1,6 @@
 package com.itheamc.aiassistant.ui.features.ai.views.composables
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -19,6 +20,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -35,6 +38,7 @@ fun ChatBubble(
     if (message.self) {
         SelfChatBubble(
             message = message.text,
+            image = message.image,
             timestamp = message.timestamp,
             modifier = modifier,
             sender = message.sender,
@@ -115,6 +119,7 @@ private fun UserChatBubble(
 private fun SelfChatBubble(
     modifier: Modifier = Modifier,
     message: String,
+    image: ImageBitmap? = null,
     timestamp: String,
     sender: String,
     isContinuationBySameUser: Boolean = false,
@@ -141,6 +146,7 @@ private fun SelfChatBubble(
 
                 MessageBubble(
                     message = message,
+                    image = image,
                     self = true,
                     isContinuationBySameUser = isContinuationBySameUser,
                 )
@@ -201,6 +207,7 @@ private fun RowScope.ChatUserAvatar(
 @Composable
 private fun MessageBubble(
     message: String,
+    image: ImageBitmap? = null,
     self: Boolean = true,
     isContinuationBySameUser: Boolean = false,
 ) {
@@ -212,7 +219,7 @@ private fun MessageBubble(
     val textColor =
         if (self) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface
 
-    Box(
+    Column(
         modifier = Modifier
             .background(
                 color = bubbleColor,
@@ -223,14 +230,32 @@ private fun MessageBubble(
                     bottomEnd = if (self && !isContinuationBySameUser) 4.dp else 16.dp
                 )
             )
-            .padding(horizontal = 16.dp, vertical = 12.dp)
+            .padding(horizontal = 8.dp, vertical = 8.dp),
+        horizontalAlignment = if (self) Alignment.End else Alignment.Start
     ) {
-        Text(
-            text = message,
-            style = MaterialTheme.typography.bodyLarge,
-            color = textColor,
-            lineHeight = 22.sp
-        )
+        if (image != null) {
+            Image(
+                bitmap = image,
+                contentDescription = "Message Image",
+                modifier = Modifier
+                    .size(200.dp)
+                    .clip(RoundedCornerShape(12.dp)),
+                contentScale = ContentScale.Crop
+            )
+            if (message.isNotBlank()) {
+                Spacer(modifier = Modifier.size(8.dp))
+            }
+        }
+
+        if (message.isNotBlank()) {
+            Text(
+                text = message,
+                style = MaterialTheme.typography.bodyLarge,
+                color = textColor,
+                lineHeight = 22.sp,
+                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+            )
+        }
     }
 }
 

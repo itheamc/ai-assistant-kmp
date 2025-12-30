@@ -1,5 +1,6 @@
 package com.itheamc.aiassistant.ui.features.ai.viewmodels
 
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -10,19 +11,19 @@ import com.itheamc.aiassistant.platform.Platform
 import com.itheamc.aiassistant.platform.PlatformFileDownloader
 import com.itheamc.aiassistant.platform.PlatformLlmInference
 import com.itheamc.aiassistant.platform.PlatformLlmInferenceSession
+import com.itheamc.aiassistant.ui.features.ai.models.ChatMessage
+import com.itheamc.aiassistant.ui.features.ai.models.Participant
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.IO
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import com.itheamc.aiassistant.ui.features.ai.models.ChatMessage
-import com.itheamc.aiassistant.ui.features.ai.models.Participant
 import kotlin.time.Clock
 import kotlin.time.ExperimentalTime
 
 
-class AiChatViewModel(
+class AiAssistantViewModel(
     private val storageService: StorageService,
     private val downloadManager: PlatformFileDownloader,
 ) : ViewModel() {
@@ -59,7 +60,7 @@ class AiChatViewModel(
                     defaultValue = null
                 )
 
-                if (path == null) {
+                if (path == null || !path.endsWith(modelFileName)) {
                     _uiState.update { it.copy(isDownloadRequired = true) }
                 } else {
                     initializeLlmInference(path)
@@ -135,6 +136,7 @@ class AiChatViewModel(
                 .setModelPath(path)
                 .setMaxTopK(64)
                 .setMaxTokens(3000)
+                .setMaxNumImages(10)
                 .build()
             llmInference = PlatformLlmInference.createFromOptions(options)
 
@@ -159,6 +161,12 @@ class AiChatViewModel(
                                 .setModelSuffix(MODEL_TEMPLATE_SUFFIX)
                                 .build()
                         )
+                        .setGraphOptions(
+                            PlatformLlmInferenceSession.PlatformLlmInferenceGraphOptions
+                                .builder()
+                                .setEnableVisionModality(false) // Make it true to enable image support
+                                .build()
+                        )
                         .build()
                 llmSession =
                     PlatformLlmInferenceSession.createFromOptions(inference, sessionOptions)
@@ -176,9 +184,10 @@ class AiChatViewModel(
      * and then calls [generateAiResponse] to process the user's input through the LLM.
      *
      * @param text The message string entered by the user.
+     * @param image Optional bitmap image attached to the message.
      */
     @OptIn(ExperimentalTime::class)
-    fun sendMessage(text: String) {
+    fun sendMessage(text: String, image: ImageBitmap? = null) {
 
         // Formatted prompt with user chat history
         val formattedPrompt = buildPrompt(text)
@@ -187,6 +196,7 @@ class AiChatViewModel(
         val userMessage = ChatMessage(
             id = generateId(text = text).toString(),
             text = text,
+            image = image,
             participant = Participant.USER,
             timestamp = Clock.System.now().toString()
         )
@@ -197,7 +207,7 @@ class AiChatViewModel(
         }
 
         // Calling LLM to generate response
-        generateAiResponse(formattedPrompt)
+        generateAiResponse(formattedPrompt, image)
     }
 
     /**
@@ -212,9 +222,10 @@ class AiChatViewModel(
      *    uninitialized or if the inference fails.
      *
      * @param prompt The user-provided text input to which the AI should respond.
+     * @param image Optional image input for the model.
      */
     @OptIn(ExperimentalTime::class)
-    private fun generateAiResponse(prompt: String) {
+    private fun generateAiResponse(prompt: String, image: ImageBitmap? = null) {
         viewModelScope.launch(Dispatchers.IO) {
 
             // Creating Ai message which will be updated once generating started
@@ -224,7 +235,7 @@ class AiChatViewModel(
                 text = "",
                 participant = Participant.AI,
                 isPending = true,
-                Clock.System.now().toString()
+                timestamp = Clock.System.now().toString()
             )
 
             // Updating state with ai message
@@ -236,6 +247,7 @@ class AiChatViewModel(
             if (llmSession != null) {
                 llmSession?.generateResponseAsync(
                     text = prompt,
+                    image = image,
                     listener = { partialResult, done ->
                         _uiState.update { state ->
                             val updatedMessages = state.messages.map { msg ->
@@ -250,7 +262,20 @@ class AiChatViewModel(
                         }
                     },
                     onError = { error ->
-                        _uiState.update { it.copy(error = error) }
+                        _uiState.update { state ->
+                            val updatedMessages = if (error.trim()
+                                    .isEmpty()
+                            ) state.messages.filter { msg -> msg.id != aiMessageId } else state.messages.map { msg ->
+                                if (msg.id == aiMessageId && msg.participant == Participant.AI) {
+                                    msg.copy(
+                                        text = error,
+                                        isPending = false
+                                    )
+                                } else msg
+                            }
+                            state.copy(messages = updatedMessages)
+                        }
+                        checkIfAiModelIsDownloaded()
                     }
                 )
             } else {
@@ -344,7 +369,7 @@ class AiChatViewModel(
         return sb.toString()
     }
 
-    companion object {
+    companion object Companion {
 
         private const val SYSTEM_TEMPLATE_PREFIX = "<start_of_turn>system\n"
         private const val SYSTEM_TEMPLATE_SUFFIX = "\n<end_of_turn>\n"
