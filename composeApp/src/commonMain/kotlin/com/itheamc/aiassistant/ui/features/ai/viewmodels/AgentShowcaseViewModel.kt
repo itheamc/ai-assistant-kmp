@@ -12,37 +12,50 @@ import com.itheamc.aiassistant.platform.PlatformFileDownloader
 import com.itheamc.aiassistant.platform.PlatformLlmInference
 import com.itheamc.aiassistant.platform.PlatformLlmInferenceSession
 import com.itheamc.aiassistant.platform.agent.LocalAgent
+import com.itheamc.aiassistant.platform.agent.SessionException
 import com.itheamc.aiassistant.platform.agent.defineTool
 import com.itheamc.aiassistant.ui.features.ai.models.ChatMessage
 import com.itheamc.aiassistant.ui.features.ai.models.Participant
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.IO
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlin.random.Random
 import kotlin.time.Clock
 import kotlin.time.ExperimentalTime
-
 
 class AgentShowcaseViewModel(
     private val storageService: StorageService,
     private val downloadManager: PlatformFileDownloader,
 ) : ViewModel() {
 
-    // Reuse the same model downlad logic for simplicity
+    // Model download configuration
     val modelDownloadUrl: String by lazy {
-        if (Platform.isIOS()) "https://drive.usercontent.google.com/download?id=1umIHyhgXtGB-KKrhbsHLUEv-YfZmOqNh&export=download&authuser=0&confirm=t&uuid=b7f0dc97-9f1a-4749-9264-d8af2bf627db&at=ANTm3czP6Za_RizNrAgEqLw3kQuD%3A1766750737754" else "https://drive.usercontent.google.com/download?id=1dp_kMbf2KbXf3FjLvOf7MCA8D0mkgCXp&export=download&authuser=0&confirm=t&uuid=0a45b921-1631-4d24-8335-55695bb590b8&at=ANTm3cy6l1MDsW-9okfLIdHFejrV%3A1766478439477"
+        if (Platform.isIOS())
+            "https://drive.usercontent.google.com/download?id=1umIHyhgXtGB-KKrhbsHLUEv-YfZmOqNh&export=download&authuser=0&confirm=t&uuid=b7f0dc97-9f1a-4749-9264-d8af2bf627db&at=ANTm3czP6Za_RizNrAgEqLw3kQuD%3A1766750737754"
+        else
+            "https://drive.usercontent.google.com/download?id=1dp_kMbf2KbXf3FjLvOf7MCA8D0mkgCXp&export=download&authuser=0&confirm=t&uuid=0a45b921-1631-4d24-8335-55695bb590b8&at=ANTm3cy6l1MDsW-9okfLIdHFejrV%3A1766478439477"
     }
 
-    val modelFileName: String by lazy { if (Platform.isIOS()) "model.bin" else "model.task" }
+    val modelFileName: String by lazy {
+        if (Platform.isIOS()) "model.bin" else "model.task"
+    }
 
     private val _uiState = MutableStateFlow(AiChatUiState())
     val uiState = _uiState.asStateFlow()
 
     private var llmInference: PlatformLlmInference? = null
-    private var llmSession: PlatformLlmInferenceSession? = null
     private var localAgent: LocalAgent? = null
+    private var currentResponseJob: Job? = null
+    private var sessionRecreationCount = 0
+    private val maxSessionRecreations = 5
+
+    // Store model path for session recreation
+    private var currentModelPath: String? = null
 
     init {
         checkIfAiModelIsDownloaded()
@@ -59,6 +72,7 @@ class AgentShowcaseViewModel(
                 if (path == null || !path.endsWith(modelFileName)) {
                     _uiState.update { it.copy(isDownloadRequired = true) }
                 } else {
+                    currentModelPath = path
                     initializeAgent(path)
                 }
             } catch (e: Exception) {
@@ -93,110 +107,232 @@ class AgentShowcaseViewModel(
                         stringPreferencesKey(AI_MODEL_PATH),
                         result.path
                     )
+                    currentModelPath = result.path
                     initializeAgent(result.path)
                 }
             }
         }
     }
 
+    /**
+     * Initialize the agent with session factory pattern.
+     */
     private fun initializeAgent(path: String) {
         _uiState.update { it.copy(isLoading = true) }
         try {
-            val options = PlatformLlmInference.PlatformLlmInferenceOptions
-                .builder()
-                .setModelPath(path)
-                .setMaxTopK(64)
-                .setMaxTokens(3000)
-                .setMaxNumImages(10)
-                .build()
-            llmInference = PlatformLlmInference.createFromOptions(options)
+            // Create LLM inference instance (reusable)
+            if (llmInference == null) {
+                val options = PlatformLlmInference.PlatformLlmInferenceOptions
+                    .builder()
+                    .setModelPath(path)
+                    .setMaxTopK(64)
+                    .setMaxTokens(2048) // Reduced for better memory management
+                    .setMaxNumImages(10)
+                    .build()
+                llmInference = PlatformLlmInference.createFromOptions(options)
+            }
 
-            llmInference?.let { inference ->
-                val sessionOptions =
-                    PlatformLlmInferenceSession
-                        .PlatformLlmInferenceSessionOptions
-                        .builder()
-                        .setRandomSeed(42)
-                        .setTemperature(0.5f) // Lower temperature for better tool use
-                        .setTopK(64)
-                        .setTopP(0.9f)
-                        .setGraphOptions(
-                            PlatformLlmInferenceSession.PlatformLlmInferenceGraphOptions
-                                .builder()
-                                .setEnableVisionModality(false)
-                                .build()
-                        )
-                        .build() // Note: We don't set prompt templates here as LocalAgent handles its own system prompt logic mostly, 
-                                 // OR we should set them if the underlying engine requires them for formatting. 
-                                 // The current LocalAgent implementation injects prompts into the message flow manually.
-                
-                llmSession = PlatformLlmInferenceSession.createFromOptions(inference, sessionOptions)
-                
-                // Define Tools
-                val calculatorTool = defineTool(
-                    name = "calculate",
-                    description = "Perform basic arithmetic calculations. Supports +, -, *, /.",
-                    parameterBlock = {
-                        property("expression", "string", "The mathematical expression to evaluate, e.g., '2 + 2 * 5'")
-                        require("expression")
-                    },
-                    execute = { args ->
-                        val expr = args["expression"] as String
-                        // Extremely basic eval for demo purposes
-                        // (In a real app, use a proper math parser)
-                        try {
-                             // Minimal parser for demo: 
-                             // We will just return a dummy string if it's too complex or just say 'Calculated: ...'
-                             // Since we can't easily eval string in commonMain without libraries, we'll mock it or do simple parsing.
-                             "Result of '$expr' is ${mockEval(expr)}" 
-                        } catch (e: Exception) {
-                            "Error calculating: ${e.message}"
-                        }
-                    }
-                )
+            // Define tools
+            val tools = listOf(
+                createCalculatorTool(),
+                createTimeTool(),
+                createWeatherTool()
+            )
 
-                val timeTool = defineTool(
-                    name = "get_current_time",
-                    description = "Get the current local time.",
-                    parameterBlock = {
-                        // No params needed
-                    },
-                    execute = { 
-                        Clock.System.now().toString()
-                    }
-                )
+            // Create agent with session factory
+            localAgent = LocalAgent(
+                sessionFactory = { createNewSession() },
+                tools = tools,
+                systemInstruction = "You are a helpful assistant with access to calculation, time, and weather tools. Use tools when appropriate to answer questions accurately.",
+                maxTurns = 5,
+                responseTimeoutMs = 30000L
+            )
 
-                localAgent = LocalAgent(
-                    session = llmSession!!,
-                    tools = listOf(calculatorTool, timeTool),
-                    systemInstruction = "You are a helpful agentic assistant. You can calculate math expressions and check the time. Use the provided tools when necessary."
+            _uiState.update {
+                it.copy(
+                    isLoading = false,
+                    isModelReady = true,
+                    error = null
                 )
             }
-            _uiState.update { it.copy(isLoading = false, isModelReady = true) }
+
+            sessionRecreationCount = 0
+
         } catch (e: Exception) {
-            _uiState.update { it.copy(error = e.message, isLoading = false) }
-        }
-    }
-    
-    // Very dummy evaluator for the demo
-    private fun mockEval(expr: String): String {
-        // Remove spaces
-        val clean = expr.replace(" ", "")
-        // Check for simple addition
-        if (clean.contains("+")) {
-            val parts = clean.split("+")
-            if (parts.size == 2) {
-                return (parts[0].toDouble() + parts[1].toDouble()).toString()
+            _uiState.update {
+                it.copy(
+                    error = "Failed to initialize agent: ${e.message}",
+                    isLoading = false
+                )
             }
         }
-        return "[Evaluated: $expr]" // Fallback
     }
 
+    /**
+     * Session factory function - creates new sessions as needed.
+     */
+    private fun createNewSession(): PlatformLlmInferenceSession {
+        val inference = llmInference
+            ?: throw IllegalStateException("LLM Inference not initialized")
+
+        sessionRecreationCount++
+
+        // Log session recreation for monitoring
+        if (sessionRecreationCount > 1) {
+            println("Session recreated: $sessionRecreationCount times")
+        }
+
+        // Alert if too many recreations (possible deeper issue)
+        if (sessionRecreationCount > maxSessionRecreations) {
+            _uiState.update {
+                it.copy(
+                    error = "Warning: Session has been recreated $sessionRecreationCount times. Consider restarting the app."
+                )
+            }
+        }
+
+        val sessionOptions = PlatformLlmInferenceSession
+            .PlatformLlmInferenceSessionOptions
+            .builder()
+            .setRandomSeed((10..70).random()) // Different seed each time
+            .setTemperature(0.3f) // Lower for better tool following
+            .setTopK(40)
+            .setTopP(0.9f)
+            .setGraphOptions(
+                PlatformLlmInferenceSession.PlatformLlmInferenceGraphOptions
+                    .builder()
+                    .setEnableVisionModality(false)
+                    .build()
+            )
+            .build()
+
+        return PlatformLlmInferenceSession.createFromOptions(inference, sessionOptions)
+    }
+
+    /**
+     * Calculator tool with improved expression evaluation.
+     */
+    private fun createCalculatorTool() = defineTool(
+        name = "calculate",
+        description = "Perform basic arithmetic calculations. Supports +, -, *, /. Example: '2+2' or '10*5'",
+        parameterBlock = {
+            property(
+                "expression",
+                "string",
+                "Mathematical expression like '2+2', '10*5', '100/4', or '50-25'"
+            )
+            require("expression")
+        },
+        execute = { args ->
+            val expr = args["expression"] as? String ?: return@defineTool "Error: No expression provided"
+            try {
+                val result = evaluateExpression(expr)
+                "$expr = $result"
+            } catch (e: Exception) {
+                "Error: Could not calculate '$expr'. ${e.message}"
+            }
+        }
+    )
+
+    /**
+     * Time tool.
+     */
+    @OptIn(ExperimentalTime::class)
+    private fun createTimeTool() = defineTool(
+        name = "get_current_time",
+        description = "Get the current date and time",
+        parameterBlock = {
+            // No parameters needed
+        },
+        execute = {
+            val now = Clock.System.now()
+            "Current time: $now"
+        }
+    )
+
+    /**
+     * Weather tool (mock implementation).
+     */
+    private fun createWeatherTool() = defineTool(
+        name = "get_weather",
+        description = "Get current weather information for a city",
+        parameterBlock = {
+            property("city", "string", "Name of the city")
+            require("city")
+        },
+        execute = { args ->
+            val city = args["city"] as? String ?: "Unknown"
+            "Weather in $city: 72°F (22°C), Sunny with light clouds"
+        }
+    )
+
+    /**
+     * Improved expression evaluator.
+     */
+    private fun evaluateExpression(expr: String): Double {
+        val clean = expr.replace(" ", "")
+
+        // Handle order of operations properly
+        return when {
+            clean.isEmpty() -> throw IllegalArgumentException("Empty expression")
+
+            // Multiplication and division first
+            "*" in clean || "/" in clean -> {
+                // Split by + or - first (lower precedence)
+                val addSubParts = clean.split(Regex("(?=[+\\-])"))
+                addSubParts.sumOf { part ->
+                    val trimmed = part.trim()
+                    if (trimmed.isEmpty()) 0.0
+                    else evaluateMultDiv(trimmed)
+                }
+            }
+
+            "+" in clean -> {
+                clean.split("+").sumOf { it.trim().toDouble() }
+            }
+
+            "-" in clean && !clean.startsWith("-") -> {
+                val parts = clean.split("-")
+                var result = parts[0].toDouble()
+                for (i in 1 until parts.size) {
+                    result -= parts[i].toDouble()
+                }
+                result
+            }
+
+            else -> clean.toDouble()
+        }
+    }
+
+    private fun evaluateMultDiv(expr: String): Double {
+        val multDivParts = expr.split(Regex("([*/])"))
+        val operators = Regex("[*/]").findAll(expr).map { it.value }.toList()
+
+        var result = multDivParts[0].toDouble()
+        for (i in operators.indices) {
+            val nextValue = multDivParts[i + 1].toDouble()
+            result = if (operators[i] == "*") {
+                result * nextValue
+            } else {
+                result / nextValue
+            }
+        }
+        return result
+    }
+
+    /**
+     * Send message to agent.
+     */
     @OptIn(ExperimentalTime::class)
     fun sendMessage(text: String, image: ImageBitmap? = null) {
-        // Creating user message
+        if (text.isBlank()) return
+
+        // Cancel any ongoing response
+        currentResponseJob?.cancel()
+
+        // Create user message
         val userMessage = ChatMessage(
-            id = generateId(text = text).toString(),
+            id = generateId(text).toString(),
             text = text,
             image = image,
             participant = Participant.USER,
@@ -210,60 +346,131 @@ class AgentShowcaseViewModel(
         generateAgentResponse(text, image)
     }
 
+    /**
+     * Generate agent response with proper error handling.
+     */
     @OptIn(ExperimentalTime::class)
     private fun generateAgentResponse(prompt: String, image: ImageBitmap? = null) {
-        viewModelScope.launch(Dispatchers.IO) {
-            // Fix ID collision: append a suffix to ensure it's different from the user message ID
+        currentResponseJob = viewModelScope.launch(Dispatchers.IO) {
             val aiMessageId = (generateId(prompt) + 1).toString()
-            // Initial placeholder
+
+            // Add thinking message
             _uiState.update {
                 it.copy(messages = it.messages + ChatMessage(
                     id = aiMessageId,
-                    text = "Thinking...", // Show thinking state
+                    text = "🤔 Thinking...",
                     participant = Participant.AI,
                     isPending = true,
                     timestamp = Clock.System.now().toString()
                 ))
             }
 
-            if (localAgent != null) {
-                try {
-                    // LocalAgent.chat is a suspend function that handles the loop
-                    val response = localAgent?.chat(prompt, image) ?: "No response"
-                    
-                    _uiState.update { state ->
-                        val updatedMessages = state.messages.map { msg ->
-                            if (msg.id == aiMessageId) {
-                                msg.copy(
-                                    text = response,
-                                    isPending = false
-                                )
-                            } else msg
-                        }
-                        state.copy(messages = updatedMessages)
-                    }
-                } catch (e: Exception) {
-                     _uiState.update { state ->
-                        val updatedMessages = state.messages.map { msg ->
-                            if (msg.id == aiMessageId) {
-                                msg.copy(
-                                    text = "Error: ${e.message}",
-                                    isPending = false
-                                )
-                            } else msg
-                        }
-                        state.copy(messages = updatedMessages)
+            try {
+                val agent = localAgent
+                if (agent == null) {
+                    updateAiMessage(aiMessageId, "Error: Agent not initialized", false)
+                    return@launch
+                }
+
+                // Monitor token usage
+                val tokensBefore = agent.getTokenCount()
+
+                // Call agent (handles session recreation internally)
+                val response = agent.chat(prompt, image)
+
+                val tokensAfter = agent.getTokenCount()
+                println("Token usage: $tokensBefore -> $tokensAfter")
+
+                // Update with final response
+                updateAiMessage(aiMessageId, response, false)
+
+            } catch (e: CancellationException) {
+                // Message was cancelled by user
+                updateAiMessage(aiMessageId, "Cancelled", false)
+                throw e
+
+            } catch (e: SessionException) {
+                // Session error - agent should have handled it, but if it reaches here, it's critical
+                updateAiMessage(
+                    aiMessageId,
+                    "I'm having trouble processing your request. The session encountered an error. Please try again.",
+                    false
+                )
+
+                // Try to reinitialize agent if we have the model path
+                currentModelPath?.let { path ->
+                    try {
+                        initializeAgent(path)
+                    } catch (initError: Exception) {
+                        _uiState.update { it.copy(error = "Failed to reinitialize: ${initError.message}") }
                     }
                 }
-            } else {
-                 _uiState.update { it.copy(error = "Agent not initialized") }
+
+            } catch (e: Exception) {
+                updateAiMessage(
+                    aiMessageId,
+                    "Sorry, I encountered an error: ${e.message ?: "Unknown error"}",
+                    false
+                )
             }
         }
     }
 
+    /**
+     * Update AI message in the state.
+     */
+    private fun updateAiMessage(messageId: String, text: String, isPending: Boolean) {
+        _uiState.update { state ->
+            val updatedMessages = state.messages.map { msg ->
+                if (msg.id == messageId) {
+                    msg.copy(text = text, isPending = isPending)
+                } else {
+                    msg
+                }
+            }
+            state.copy(messages = updatedMessages)
+        }
+    }
+
+    /**
+     * Cancel current response generation.
+     */
     fun cancel() {
-        // LocalAgent currently doesn't expose cancel, but we could add it to the wrapper if needed.
-        // For now, we can cancel the scope, but `LocalAgent.chat` runs in the calling scope, so standard cancellation works.
+        currentResponseJob?.cancel()
+        currentResponseJob = null
+    }
+
+    /**
+     * Clear chat history.
+     */
+    fun clearChat() {
+        _uiState.update { it.copy(messages = emptyList()) }
+        localAgent?.reset()
+        sessionRecreationCount = 0
+    }
+
+    /**
+     * Reset agent (useful if it gets into a bad state).
+     */
+    fun resetAgent() {
+        currentModelPath?.let { path ->
+            localAgent?.close()
+            localAgent = null
+            sessionRecreationCount = 0
+            initializeAgent(path)
+        }
+    }
+
+    /**
+     * Get agent statistics for debugging.
+     */
+    fun getAgentStats(): String {
+        val agent = localAgent ?: return "Agent not initialized"
+        return """
+            Token count: ${agent.getTokenCount()}
+            Session recreations: $sessionRecreationCount
+            Messages: ${_uiState.value.messages.size}
+        """.trimIndent()
     }
 
     @OptIn(ExperimentalTime::class)
@@ -272,7 +479,8 @@ class AgentShowcaseViewModel(
 
     override fun onCleared() {
         super.onCleared()
-        llmSession?.close()
+        currentResponseJob?.cancel()
+        localAgent?.close()
         llmInference?.close()
     }
 }
