@@ -12,7 +12,6 @@ import com.itheamc.aiassistant.platform.PlatformFileDownloader
 import com.itheamc.aiassistant.platform.PlatformLlmInference
 import com.itheamc.aiassistant.platform.PlatformLlmInferenceSession
 import com.itheamc.aiassistant.platform.agent.LocalAgent
-import com.itheamc.aiassistant.platform.agent.SimpleJson
 import com.itheamc.aiassistant.platform.agent.defineTool
 import com.itheamc.aiassistant.ui.features.ai.models.ChatMessage
 import com.itheamc.aiassistant.ui.features.ai.models.Participant
@@ -214,7 +213,8 @@ class AgentShowcaseViewModel(
     @OptIn(ExperimentalTime::class)
     private fun generateAgentResponse(prompt: String, image: ImageBitmap? = null) {
         viewModelScope.launch(Dispatchers.IO) {
-            val aiMessageId = generateId(prompt).toString()
+            // Fix ID collision: append a suffix to ensure it's different from the user message ID
+            val aiMessageId = (generateId(prompt) + 1).toString()
             // Initial placeholder
             _uiState.update {
                 it.copy(messages = it.messages + ChatMessage(
