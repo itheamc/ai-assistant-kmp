@@ -4,7 +4,8 @@ package com.itheamc.aiassistant.ui.navigation
 enum class AiAssistantRoute {
     Splash,
     Onboarding,
-    AiChat;
+    AiChat,
+    AgentShowcase;
 
     companion object Companion {
         fun fromStr(value: String?): AiAssistantRoute? {
@@ -12,6 +13,7 @@ enum class AiAssistantRoute {
                 value?.contains(Splash.name) == true -> Splash
                 value?.contains(Onboarding.name) == true -> Onboarding
                 value?.contains(AiChat.name) == true -> AiChat
+                value?.contains(AgentShowcase.name) == true -> AgentShowcase
                 else -> null
             }
         }

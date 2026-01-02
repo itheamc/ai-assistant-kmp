@@ -26,6 +26,11 @@
             android:authorities="${applicationId}.llm-context-provider"
             android:exported="false"
             android:initOrder="100" />
+
+        <!--    ADDED FOR LOCAL AGENTS FC    -->
+        <uses-native-library android:name="libOpenCL.so" android:required="false"/>
+        <uses-native-library android:name="libOpenCL-car.so" android:required="false"/>
+        <uses-native-library android:name="libOpenCL-pixel.so" android:required="false"/>
     </application>
 
 </manifest>

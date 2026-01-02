@@ -117,6 +117,20 @@ fun OnboardingScreen(
                         )
                     },
                 )
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                AiAssistantAppButton(
+                    modifier = Modifier.fillMaxWidth(),
+                    text = "Try Agentic Features",
+                    secondary = true,
+                    onClick = {
+                        AiAssistantRoute.AgentShowcase.navigate(
+                            navController,
+                            popUpTo = AiAssistantRoute.Onboarding.name,
+                        )
+                    },
+                )
             }
         }
     }

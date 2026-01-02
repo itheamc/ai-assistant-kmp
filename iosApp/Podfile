@@ -1,0 +1,17 @@
+# In iosApp/Podfile
+platform :ios, '16.0' # Set your minimum iOS deployment target
+use_frameworks! :linkage => :static
+
+target 'iosApp' do
+  # Pod for your KMP shared module, linking by path
+  pod 'composeApp', :path => '../composeApp' # Path is relative to the pod file location
+
+  # Optional: Add post_install script to ensure all pods use the same iOS version
+  post_install do |installer|
+    installer.pods_project.targets.each do |target|
+      target.build_configurations.each do |config|
+        config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '16.0'
+      end
+    end
+  end
+end
