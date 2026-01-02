@@ -24,7 +24,6 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import kotlin.random.Random
 import kotlin.time.Clock
 import kotlin.time.ExperimentalTime
 
@@ -144,7 +143,6 @@ class AgentShowcaseViewModel(
                 sessionFactory = { createNewSession() },
                 tools = tools,
                 systemInstruction = "You are a helpful assistant with access to calculation, time, and weather tools. Use tools when appropriate to answer questions accurately.",
-                maxTurns = 5,
                 responseTimeoutMs = 30000L
             )
 
@@ -214,22 +212,21 @@ class AgentShowcaseViewModel(
      */
     private fun createCalculatorTool() = defineTool(
         name = "calculate",
-        description = "Perform basic arithmetic calculations. Supports +, -, *, /. Example: '2+2' or '10*5'",
+        description = "Perform basic arithmetic calculations",
         parameterBlock = {
-            property(
-                "expression",
-                "string",
-                "Mathematical expression like '2+2', '10*5', '100/4', or '50-25'"
-            )
+            property("expression", "string", "Mathematical expression")
             require("expression")
         },
         execute = { args ->
-            val expr = args["expression"] as? String ?: return@defineTool "Error: No expression provided"
+            val expr = args["expression"] as? String
+            if (expr.isNullOrBlank()) {
+                return@defineTool "No calculation needed"
+            }
             try {
                 val result = evaluateExpression(expr)
-                "$expr = $result"
+                "The result of $expr is $result"
             } catch (e: Exception) {
-                "Error: Could not calculate '$expr'. ${e.message}"
+                "Sorry, I couldn't calculate that: ${e.message}"
             }
         }
     )

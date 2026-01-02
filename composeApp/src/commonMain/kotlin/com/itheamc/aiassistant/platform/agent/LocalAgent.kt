@@ -8,154 +8,363 @@ import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 
 /**
- * Local Agent with session management and automatic recovery.
+ * Hybrid Local Agent that combines intent detection with LLM tool selection.
+ * Uses a two-phase approach:
+ * 1. Model analyzes query and selects tool (structured prompt, not JSON)
+ * 2. Code extracts parameters and executes tool
  */
 class LocalAgent(
     private val sessionFactory: () -> PlatformLlmInferenceSession,
     private val tools: List<Tool>,
     private val systemInstruction: String = "You are a helpful assistant.",
-    private val maxTurns: Int = 5,
-    private val responseTimeoutMs: Long = 30000L // 30 seconds timeout
+    private val responseTimeoutMs: Long = 30000L
 ) {
     private var session: PlatformLlmInferenceSession = sessionFactory()
-    private val conversationHistory = mutableListOf<Message>()
-    private var systemPromptSent = false
+    private var conversationHistory = mutableListOf<String>()
     private var tokenCount = 0
-    private val maxTokensBeforeReset = 2000 // Adjust based on your model's limit
-
-    data class Message(val role: String, val content: String, val tokenEstimate: Int = 0)
+    private val maxTokensBeforeReset = 2000
 
     /**
-     * Main chat interface with automatic session recovery.
+     * Main chat function with dynamic tool selection.
      */
     suspend fun chat(userMessage: String, image: ImageBitmap? = null): String {
-        // Estimate tokens (rough: 1 token ≈ 4 chars)
-        val userTokens = estimateTokens(userMessage)
-        conversationHistory.add(Message("user", userMessage, userTokens))
-        tokenCount += userTokens
+        tokenCount += estimateTokens(userMessage)
 
-        var turnCount = 0
-        val usedTools = mutableSetOf<String>()
-        var lastToolCall: ToolCall? = null
-        var repeatCount = 0
-        var sessionRecreateAttempts = 0
-        val maxSessionRecreateAttempts = 2
-
-        while (turnCount < maxTurns) {
-            turnCount++
-
-            // Check if we need to reset due to token limit
-            if (tokenCount > maxTokensBeforeReset) {
-                recreateSessionWithSummary()
-            }
-
-            val prompt = buildPrompt()
-            val promptTokens = estimateTokens(prompt)
-
-            // Generate response with retry on session failure
-            val response = try {
-                generateResponseWithRetry(
-                    prompt = prompt,
-                    image = if (conversationHistory.size == 1) image else null,
-                    maxRetries = 2
-                )
-            } catch (e: SessionException) {
-                // Session is dead, try to recreate
-                if (sessionRecreateAttempts < maxSessionRecreateAttempts) {
-                    sessionRecreateAttempts++
-                    recreateSession()
-                    continue // Retry with new session
-                } else {
-                    conversationHistory.clear()
-                    return "I'm having trouble processing your request. Please try again."
-                }
-            } catch (e: Exception) {
-                conversationHistory.clear()
-                return "Error: ${e.message ?: "Unknown error occurred"}"
-            }
-
-            // Check for empty or invalid response
-            if (response.isBlank()) {
-                if (sessionRecreateAttempts < maxSessionRecreateAttempts) {
-                    sessionRecreateAttempts++
-                    recreateSession()
-                    continue
-                } else {
-                    conversationHistory.clear()
-                    return "I couldn't generate a response. Please try again."
-                }
-            }
-
-            // Store response and update token count
-            val responseTokens = estimateTokens(response)
-            conversationHistory.add(Message("assistant", response, responseTokens))
-            tokenCount += responseTokens
-
-            // Parse tool call
-            val toolCall = parseToolCall(response)
-
-            if (toolCall != null) {
-                // Loop detection
-                if (toolCall == lastToolCall) {
-                    repeatCount++
-                    if (repeatCount >= 2) {
-                        conversationHistory.clear()
-                        tokenCount = 0
-                        return "I encountered an issue with the ${toolCall.name} tool."
-                    }
-                } else {
-                    repeatCount = 0
-                }
-                lastToolCall = toolCall
-
-                // Check if tool already tried and failed
-                if (toolCall.name in usedTools) {
-                    conversationHistory.clear()
-                    tokenCount = 0
-                    return "The ${toolCall.name} tool didn't work as expected. Please try a different approach."
-                }
-
-                // Execute tool
-                val result = executeTool(toolCall)
-                usedTools.add(toolCall.name)
-
-                // Handle tool failure
-                if (result.startsWith("Error:")) {
-                    conversationHistory.clear()
-                    tokenCount = 0
-                    return "The ${toolCall.name} tool encountered an error: ${result.removePrefix("Error: ")}"
-                }
-
-                // Add result
-                val resultMsg = "Result: $result\n\nProvide final answer:"
-                val resultTokens = estimateTokens(resultMsg)
-                conversationHistory.add(Message("user", resultMsg, resultTokens))
-                tokenCount += resultTokens
-
-            } else {
-                // Final response
-                val cleanResponse = cleanResponse(response)
-                conversationHistory.clear()
-                tokenCount = 0
-                return cleanResponse
-            }
+        if (tokenCount > maxTokensBeforeReset) {
+            recreateSession()
         }
 
-        conversationHistory.clear()
-        tokenCount = 0
-        return "I wasn't able to complete that task."
+        // Phase 1: Ask model to analyze the query and select a tool
+        val toolSelection = selectTool(userMessage, image) ?:
+        // No tool needed - just chat
+        return generateNormalResponse(userMessage, image)
+
+        // Phase 2: Check if we have all required parameters
+        val tool = tools.find { it.name == toolSelection.toolName }
+        if (tool == null) {
+            return "I don't have access to the ${toolSelection.toolName} tool."
+        }
+
+        val missingParams = findMissingParameters(tool, toolSelection.extractedParams)
+
+        if (missingParams.isNotEmpty()) {
+            // Ask user for missing parameters
+            conversationHistory.add("User: $userMessage")
+            val question = buildParameterQuestion(tool, missingParams)
+            conversationHistory.add("Assistant: $question")
+            return question
+        }
+
+        // Phase 3: Execute the tool
+        val result = executeTool(tool, toolSelection.extractedParams)
+
+        // Phase 4: Format the result naturally
+        return formatToolResult(userMessage, tool.name, result, image)
     }
 
     /**
-     * Generate response with automatic retry on failure.
+     * Phase 1: Ask model to select appropriate tool.
+     * Uses structured text format instead of JSON (more reliable for small models).
      */
+    private suspend fun selectTool(userMessage: String, image: ImageBitmap?): ToolSelection? {
+        val toolsList = tools.joinToString("\n") { tool ->
+            val params =
+                (tool.parameters["properties"] as? Map<*, *>)?.keys?.joinToString(", ") ?: ""
+            "- ${tool.name}: ${tool.description} [Parameters: $params]"
+        }
+
+        val prompt = """
+Analyze this user request and determine if a tool should be used.
+
+Available tools:
+$toolsList
+
+User request: "$userMessage"
+
+Instructions:
+1. If NO tool is needed, respond with: CHAT
+2. If a tool is needed, respond with:
+   TOOL: tool_name
+   REASON: brief reason
+   
+Only respond with CHAT or TOOL format above. Be direct.
+        """.trim()
+
+        return try {
+            val response = generateResponseWithRetry(prompt, image, maxRetries = 1)
+            parseToolSelection(response, userMessage)
+        } catch (e: Exception) {
+            null // Fall back to chat
+        }
+    }
+
+    /**
+     * Parse the model's tool selection response.
+     */
+    private fun parseToolSelection(response: String, originalMessage: String): ToolSelection? {
+        val lines = response.trim().lines()
+
+        // Check if model said to chat
+        if (response.uppercase().contains("CHAT")) {
+            return null
+        }
+
+        // Look for TOOL: pattern
+        val toolLine = lines.find { it.trim().uppercase().startsWith("TOOL:") }
+        if (toolLine != null) {
+            val toolName = toolLine.substringAfter(":", "").trim().lowercase()
+            val matchedTool = tools.find { it.name.lowercase() == toolName }
+
+            if (matchedTool != null) {
+                // Extract parameters from original message
+                val params = extractParametersFromMessage(matchedTool, originalMessage)
+                return ToolSelection(matchedTool.name, params)
+            }
+        }
+
+        return null
+    }
+
+    /**
+     * Extract parameters from user message using pattern matching.
+     * This is dynamic based on the tool's parameter schema.
+     */
+    private fun extractParametersFromMessage(tool: Tool, message: String): Map<String, Any?> {
+        val properties = (tool.parameters["properties"] as? Map<*, *>) ?: return emptyMap()
+        val extracted = mutableMapOf<String, Any?>()
+
+        properties.forEach { (paramName, paramSchema) ->
+            val schema = paramSchema as? Map<*, *> ?: return@forEach
+            val paramType = schema["type"] as? String ?: "string"
+            val paramNameStr = paramName.toString()
+
+            val value = when (paramType) {
+                "number", "integer" -> extractNumber(message)
+                "string" -> extractStringParameter(paramNameStr, message, schema)
+                "boolean" -> extractBoolean(message)
+                else -> null
+            }
+
+            if (value != null) {
+                extracted[paramNameStr] = value
+            }
+        }
+
+        return extracted
+    }
+
+    /**
+     * Extract string parameters based on common patterns.
+     */
+    private fun extractStringParameter(
+        paramName: String,
+        message: String,
+        schema: Map<*, *>
+    ): String? {
+        val description = schema["description"] as? String ?: ""
+        val lower = message.lowercase()
+
+        // Try to extract based on parameter context
+        return when {
+            // Math expression
+            paramName.contains("expression") || description.contains("expression") -> {
+                extractMathExpression(message)
+            }
+            // City name
+            paramName.contains("city") || description.contains("city") -> {
+                extractLocation(message)
+            }
+            // Generic text extraction - look for quoted text or text after keywords
+            else -> {
+                // Look for quoted text
+                val quoted = Regex("""["']([^"']+)["']""").find(message)
+                if (quoted != null) {
+                    return quoted.groupValues[1]
+                }
+
+                // Look for text after common prepositions
+                val afterPrep =
+                    Regex("""(?:for|about|on|of|in)\s+(.+?)(?:\?|$)""", RegexOption.IGNORE_CASE)
+                        .find(message)
+                if (afterPrep != null) {
+                    return afterPrep.groupValues[1].trim()
+                }
+
+                null
+            }
+        }
+    }
+
+    /**
+     * Extract mathematical expressions.
+     */
+    private fun extractMathExpression(text: String): String? {
+        // Direct math expression
+        val mathPattern = Regex("""(\d+\.?\d*\s*[+\-*/]\s*\d+\.?\d*(?:\s*[+\-*/]\s*\d+\.?\d*)*)""")
+        val directMatch = mathPattern.find(text)
+        if (directMatch != null) {
+            return directMatch.value.replace(" ", "")
+        }
+
+        // After keywords
+        val keywordPattern = Regex(
+            """(?:calculate|compute|solve|what is|what's)\s+(.+?)(?:\?|$)""",
+            RegexOption.IGNORE_CASE
+        )
+        val match = keywordPattern.find(text)
+        if (match != null) {
+            val expr = match.groupValues[1].trim()
+            if (expr.matches(Regex(""".*\d+.*[+\-*/].*\d+.*"""))) {
+                return expr.replace(" ", "")
+            }
+        }
+
+        return null
+    }
+
+    /**
+     * Extract location/city names.
+     */
+    private fun extractLocation(text: String): String? {
+        val patterns = listOf(
+            Regex("""(?:in|of|for|at)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)"""),
+            Regex(
+                """([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)\s+(?:weather|temperature|forecast)""",
+                RegexOption.IGNORE_CASE
+            )
+        )
+
+        for (pattern in patterns) {
+            val match = pattern.find(text)
+            if (match != null) {
+                val location = match.groupValues[1].trim()
+                if (location.isNotEmpty() && !isCommonWord(location.lowercase())) {
+                    return location
+                }
+            }
+        }
+
+        return null
+    }
+
+    /**
+     * Extract numbers from text.
+     */
+    private fun extractNumber(text: String): Number? {
+        val numberPattern = Regex("""\b(\d+\.?\d*)\b""")
+        val match = numberPattern.find(text)
+        return match?.groupValues?.get(1)?.toDoubleOrNull()
+    }
+
+    /**
+     * Extract boolean values.
+     */
+    private fun extractBoolean(text: String): Boolean? {
+        val lower = text.lowercase()
+        return when {
+            lower.contains("yes") || lower.contains("true") || lower.contains("enable") -> true
+            lower.contains("no") || lower.contains("false") || lower.contains("disable") -> false
+            else -> null
+        }
+    }
+
+    /**
+     * Check for missing required parameters.
+     */
+    private fun findMissingParameters(
+        tool: Tool,
+        extractedParams: Map<String, Any?>
+    ): List<String> {
+        val required =
+            (tool.parameters["required"] as? List<*>)?.map { it.toString() } ?: emptyList()
+        return required.filter { !extractedParams.containsKey(it) || extractedParams[it] == null }
+    }
+
+    /**
+     * Build a natural question to ask for missing parameters.
+     */
+    private fun buildParameterQuestion(tool: Tool, missingParams: List<String>): String {
+        val properties = (tool.parameters["properties"] as? Map<*, *>)
+
+        return properties?.let {
+            if (missingParams.size == 1) {
+                val paramName = missingParams[0]
+                val schema = properties[paramName] as? Map<*, *>
+                val description = schema?.get("description") as? String
+                description?.let { "What $it?" } ?: "What is the $paramName?"
+            } else {
+                val params = missingParams.joinToString(", ")
+                "I need the following information: $params"
+            }
+        } ?: "No properties"
+    }
+
+    /**
+     * Execute tool with extracted parameters.
+     */
+    private suspend fun executeTool(tool: Tool, params: Map<String, Any?>): String {
+        return try {
+            tool.execute(params)
+        } catch (e: Exception) {
+            "Error executing ${tool.name}: ${e.message}"
+        }
+    }
+
+    /**
+     * Format tool result naturally using the model.
+     */
+    private suspend fun formatToolResult(
+        originalQuery: String,
+        toolName: String,
+        result: String,
+        image: ImageBitmap?
+    ): String {
+        val prompt = """
+$systemInstruction
+
+User asked: "$originalQuery"
+
+I used the $toolName tool and got this result:
+$result
+
+Provide a natural, conversational response based on this information. Be brief and helpful.
+        """.trim()
+
+        return try {
+            val response = generateResponseWithRetry(prompt, image, maxRetries = 1)
+            tokenCount += estimateTokens(response)
+            response.trim()
+        } catch (e: Exception) {
+            // Fallback: return raw result
+            result
+        }
+    }
+
+    /**
+     * Generate normal chat response (no tool).
+     */
+    private suspend fun generateNormalResponse(message: String, image: ImageBitmap?): String {
+        val prompt = """
+$systemInstruction
+
+User: $message
+        """.trim()
+
+        return try {
+            val response = generateResponseWithRetry(prompt, image)
+            tokenCount += estimateTokens(response)
+            response.trim()
+        } catch (e: Exception) {
+            "I'm having trouble responding. Please try again."
+        }
+    }
+
     private suspend fun generateResponseWithRetry(
         prompt: String,
         image: ImageBitmap?,
         maxRetries: Int = 2
     ): String {
         var attempts = 0
-        var lastError: Exception? = null
 
         while (attempts < maxRetries) {
             attempts++
@@ -165,29 +374,23 @@ class LocalAgent(
                     generateResponseSuspend(prompt, image)
                 }
 
-                if (response != null && response.isNotBlank()) {
+                if (!response.isNullOrBlank()) {
                     return response
                 }
 
-                // Empty response - might be a session issue
                 if (attempts < maxRetries) {
                     recreateSession()
                 }
 
             } catch (e: Exception) {
-                lastError = e
-
-                // Check if it's a token limit or session error
                 val errorMsg = e.message?.lowercase() ?: ""
-                if (errorMsg.contains("token") ||
-                    errorMsg.contains("limit") ||
-                    errorMsg.contains("context") ||
-                    errorMsg.contains("session")) {
-
+                if (errorMsg.contains("token") || errorMsg.contains("limit") ||
+                    errorMsg.contains("context")
+                ) {
                     if (attempts < maxRetries) {
                         recreateSession()
                     } else {
-                        throw SessionException("Session failed after token limit: ${e.message}", e)
+                        throw SessionException("Token limit reached", e)
                     }
                 } else {
                     throw e
@@ -195,12 +398,9 @@ class LocalAgent(
             }
         }
 
-        throw lastError ?: SessionException("Failed to generate response after $maxRetries attempts")
+        throw SessionException("Failed after $maxRetries attempts")
     }
 
-    /**
-     * Generate response with proper timeout and error handling.
-     */
     private suspend fun generateResponseSuspend(text: String, image: ImageBitmap?): String {
         return suspendCancellableCoroutine { continuation ->
             val sb = StringBuilder()
@@ -220,9 +420,7 @@ class LocalAgent(
                     onError = { error ->
                         if (!hasResumed && continuation.isActive) {
                             hasResumed = true
-                            continuation.resumeWithException(
-                                SessionException("Session error: $error")
-                            )
+                            continuation.resumeWithException(SessionException("Session error: $error"))
                         }
                     }
                 )
@@ -232,196 +430,51 @@ class LocalAgent(
                     continuation.resumeWithException(e)
                 }
             }
-
-            continuation.invokeOnCancellation {
-                // Cleanup if needed
-            }
         }
     }
 
-    /**
-     * Recreate session when it fails or reaches token limit.
-     */
     private fun recreateSession() {
         try {
             session.close()
-        } catch (e: Exception) {
-            // Ignore close errors
+        } catch (_: Exception) {
         }
 
         session = sessionFactory()
-        systemPromptSent = false
         tokenCount = 0
         conversationHistory.clear()
     }
 
-    /**
-     * Recreate session with a summary of conversation history.
-     */
-    private suspend fun recreateSessionWithSummary() {
-        // Save important context before clearing
-        val contextSummary = if (conversationHistory.size > 2) {
-            "Previous context: ${conversationHistory.takeLast(2).joinToString(" ") { it.content.take(100) }}"
-        } else {
-            ""
-        }
+    private fun estimateTokens(text: String): Int = (text.length / 4).coerceAtLeast(1)
 
-        // Recreate session
-        recreateSession()
-
-        // Add summary if we had context
-        if (contextSummary.isNotEmpty()) {
-            val summaryTokens = estimateTokens(contextSummary)
-            conversationHistory.add(Message("user", contextSummary, summaryTokens))
-            tokenCount += summaryTokens
-        }
+    private fun isCommonWord(word: String): Boolean {
+        val commonWords = setOf(
+            "the", "what", "how", "when", "where", "which", "who",
+            "is", "are", "was", "were", "be", "been", "being",
+            "it", "its", "this", "that", "these", "those"
+        )
+        return word in commonWords
     }
 
-    /**
-     * Estimate token count (rough approximation).
-     */
-    private fun estimateTokens(text: String): Int {
-        // Rough estimate: 1 token ≈ 4 characters
-        // This is a simplification - adjust based on your tokenizer
-        return (text.length / 4).coerceAtLeast(1)
+    fun getTokenCount(): Int = tokenCount
+    fun reset() {
+        tokenCount = 0
+        conversationHistory.clear()
     }
 
-    private fun buildPrompt(): String {
-        val sb = StringBuilder()
-
-        if (!systemPromptSent) {
-            sb.append(buildSystemPrompt()).append("\n\n")
-            systemPromptSent = true
-        }
-
-        // Keep only recent messages to manage context
-        val recentMessages = conversationHistory.takeLast(3)
-        for (msg in recentMessages) {
-            sb.append("${msg.role.uppercase()}: ${msg.content}\n\n")
-        }
-
-        return sb.toString().trim()
-    }
-
-    private fun buildSystemPrompt(): String {
-        if (tools.isEmpty()) {
-            return systemInstruction
-        }
-
-        val toolList = tools.joinToString("\n") { tool ->
-            "- ${tool.name}: ${tool.description}"
-        }
-
-        return """$systemInstruction
-
-Available tools:
-$toolList
-
-To use a tool, respond ONLY with:
-TOOL: tool_name
-ARGS: {"arg1": "value1"}
-
-Otherwise respond normally."""
-    }
-
-    private fun parseToolCall(response: String): ToolCall? {
-        // Try simple format first
-        val toolMatch = Regex("""TOOL:\s*(\w+)""", RegexOption.IGNORE_CASE).find(response)
-        val argsMatch = Regex("""ARGS:\s*(\{[^}]*\})""", RegexOption.IGNORE_CASE).find(response)
-
-        if (toolMatch != null) {
-            val toolName = toolMatch.groupValues[1]
-            val args = if (argsMatch != null) {
-                try {
-                    val parsed = SimpleJson.parse(argsMatch.groupValues[1])
-                    if (parsed is Map<*, *>) {
-                        parsed.mapKeys { it.key.toString() }
-                    } else {
-                        emptyMap()
-                    }
-                } catch (e: Exception) {
-                    emptyMap()
-                }
-            } else {
-                emptyMap()
-            }
-            return ToolCall(toolName, args)
-        }
-
-        // Fallback to JSON format
-        try {
-            val jsonMatch = Regex("""\{[^}]*"tool"[^}]*\}""").find(response)
-            if (jsonMatch != null) {
-                val parsed = SimpleJson.parse(jsonMatch.value) as? Map<*, *>
-                val toolName = parsed?.get("tool") as? String
-                val params = parsed?.get("parameters") as? Map<*, *> ?: emptyMap<String, Any?>()
-
-                if (toolName != null) {
-                    return ToolCall(toolName, params.mapKeys { it.key.toString() })
-                }
-            }
-        } catch (e: Exception) {
-            // Ignore
-        }
-
-        return null
-    }
-
-    private suspend fun executeTool(call: ToolCall): String {
-        val tool = tools.find { it.name == call.name }
-            ?: return "Error: Tool '${call.name}' not found"
-
-        return try {
-            tool.execute(call.args)
-        } catch (e: Exception) {
-            "Error: ${e.message}"
-        }
-    }
-
-    private fun cleanResponse(response: String): String {
-        var cleaned = response
-
-        cleaned = cleaned.replace(Regex("""TOOL:.*""", RegexOption.IGNORE_CASE), "")
-        cleaned = cleaned.replace(Regex("""ARGS:.*""", RegexOption.IGNORE_CASE), "")
-        cleaned = cleaned.replace(Regex("""\{[^}]*"tool"[^}]*\}"""), "")
-        cleaned = cleaned.replace(Regex("""^(Final answer:|Answer:|Response:)\s*""", RegexOption.IGNORE_CASE), "")
-        cleaned = cleaned.replace(Regex("""^["']|["']$"""), "")
-
-        return cleaned.trim().ifEmpty { "I don't have a response." }
-    }
-
-    /**
-     * Manually close the session.
-     */
     fun close() {
         try {
             session.close()
-        } catch (e: Exception) {
-            // Ignore
+        } catch (_: Exception) {
         }
     }
-
-    /**
-     * Clear history and reset.
-     */
-    fun reset() {
-        conversationHistory.clear()
-        systemPromptSent = false
-        tokenCount = 0
-    }
-
-    /**
-     * Get current token count estimate.
-     */
-    fun getTokenCount(): Int = tokenCount
 }
 
 /**
- * Exception for session-related errors.
+ * Represents a selected tool with extracted parameters.
  */
-class SessionException(message: String, cause: Throwable? = null) : Exception(message, cause)
-
-data class ConversationTurn(
-    val role: String,
-    val content: String
+data class ToolSelection(
+    val toolName: String,
+    val extractedParams: Map<String, Any?>
 )
+
+class SessionException(message: String, cause: Throwable? = null) : Exception(message, cause)
